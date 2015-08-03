@@ -169,16 +169,33 @@ class TestHierarchyControl:
                     m_id = self.pub_marker.publishSinglePointMarker(PyKDL.Vector(0,-col.length/2,0), m_id, r=0, g=1, b=0, a=alpha, namespace=namespace, frame_id='base', m_type=Marker.SPHERE, scale=scale, T=T_B_O)
                     m_id = self.pub_marker.publishSinglePointMarker(PyKDL.Vector(0,col.length/2,0), m_id, r=0, g=1, b=0, a=alpha, namespace=namespace, frame_id='base', m_type=Marker.SPHERE, scale=scale, T=T_B_O)
                     scale=Vector3(col.radius*2, col.radius*2, col.length)
-                    T_O_C = PyKDL.Frame(PyKDL.Rotation.RotX(90.0/180.0*math.pi))#, PyKDL.Vector(0,col.length/2,0))
+                    T_O_C = PyKDL.Frame(PyKDL.Rotation.RotX(90.0/180.0*math.pi))
                     m_id = self.pub_marker.publishSinglePointMarker(PyKDL.Vector(), m_id, r=0, g=1, b=0, a=alpha, namespace=namespace, frame_id='base', m_type=Marker.CYLINDER, scale=scale, T=T_B_O * T_O_C)
+        return m_id
 
+    def publishObstaclesVis(self, m_id, col_list):
+        namespace = "col_model"
+        alpha = 0.5
+        for col in col_list:
+                T_B_O = col.T_L_O
+                if col.type == "sphere":
+                    scale=Vector3(col.radius*2, col.radius*2, col.radius*2)
+                    m_id = self.pub_marker.publishSinglePointMarker(PyKDL.Vector(), m_id, r=1, g=0, b=0, a=alpha, namespace=namespace, frame_id='base', m_type=Marker.SPHERE, scale=scale, T=T_B_O)
+                elif col.type == "capsule":
+                    m_id = self.pub_marker.publishFrameMarker(T_B_O, m_id, scale=0.1, frame='base', namespace=namespace)
+                    scale=Vector3(col.radius*2, col.radius*2, col.radius*2)
+                    m_id = self.pub_marker.publishSinglePointMarker(PyKDL.Vector(0,-col.length/2,0), m_id, r=1, g=0, b=0, a=alpha, namespace=namespace, frame_id='base', m_type=Marker.SPHERE, scale=scale, T=T_B_O)
+                    m_id = self.pub_marker.publishSinglePointMarker(PyKDL.Vector(0,col.length/2,0), m_id, r=1, g=0, b=0, a=alpha, namespace=namespace, frame_id='base', m_type=Marker.SPHERE, scale=scale, T=T_B_O)
+                    scale=Vector3(col.radius*2, col.radius*2, col.length)
+                    T_O_C = PyKDL.Frame(PyKDL.Rotation.RotX(90.0/180.0*math.pi))
+                    m_id = self.pub_marker.publishSinglePointMarker(PyKDL.Vector(), m_id, r=1, g=0, b=0, a=alpha, namespace=namespace, frame_id='base', m_type=Marker.CYLINDER, scale=scale, T=T_B_O * T_O_C)
         return m_id
 
     def spin(self):
 
         rospack = rospkg.RosPack()
 
-        use6dof = True
+        use6dof = False
 
         if use6dof:
             urdf_path=rospack.get_path('planar_manipulator_defs') + '/robots/planar_manipulator_6dof.urdf'
@@ -233,6 +250,28 @@ class TestHierarchyControl:
 
         self.publishJointState()
 
+
+        obst = []
+        obj = collision_model.CollisionModel.Collision()
+        obj.type = "capsule"
+        obj.T_L_O = PyKDL.Frame(PyKDL.Vector(0.7, 1.5, 0))
+        obj.radius = 0.1
+        obj.length = 0.4
+        obst.append( obj )
+
+        obj = collision_model.CollisionModel.Collision()
+        obj.type = "capsule"
+        obj.T_L_O = PyKDL.Frame(PyKDL.Vector(-0.9, 1.2, 0))
+        obj.radius = 0.1
+        obj.length = 0.4
+        obst.append( obj )
+
+        obj = collision_model.CollisionModel.Collision()
+        obj.type = "sphere"
+        obj.T_L_O = PyKDL.Frame(PyKDL.Vector(0, 1, 0))
+        obj.radius = 0.05
+        obst.append( obj )
+
 #        rospy.sleep(1)
 #        T_B_E = solver.calculateFk("base", "effector", self.q)
 #        print T_B_E
@@ -250,20 +289,21 @@ class TestHierarchyControl:
         r_HAND_target = PyKDL.Frame(PyKDL.Vector(0.5,0.5,0))
         last_time = rospy.Time.now()
 
+        self.q = np.array( [-0.64403894,  1.2374733,   1.20122587, -0.81931807, -1.40127305] )
+
         counter = 10000
         while not rospy.is_shutdown():
-            if counter > 500:
-#                self.q[0] = random.uniform(-2,2)
-#                self.q[1] = random.uniform(-2,2)
-#                self.q[2] = random.uniform(-2,2)
-#                self.q[3] = random.uniform(-2,2)
-#                self.q[4] = random.uniform(-2,2)
-#                print self.q
-#                self.publishJointState()
-
+            if counter > 800:
                 r_HAND_target = PyKDL.Frame(PyKDL.Rotation.RotZ(random.uniform(-math.pi, math.pi)), PyKDL.Vector(random.uniform(-1,1), random.uniform(0,2), 0))
-#                r_HAND_target = r_HAND_targets[target_idx]
-#                target_idx = (target_idx + 1)%len(r_HAND_targets)
+
+#                r_HAND_target = PyKDL.Frame(PyKDL.Rotation.Quaternion(0.0,0.0,0.924467039084,-0.381261975087), PyKDL.Vector(0.261697539135,0.97235224304,0.0))
+#r_HAND_target = PyKDL.Frame(PyKDL.Rotation.Quaternion(0.0,0.0,0.894763681298,0.446539980999), PyKDL.Vector(0.354981453046,0.604598917063,0.0))
+#self.q = np.array( [-0.89640518  0.44336642  1.96125279 -1.66533209 -2.19189403] )
+
+                qt = r_HAND_target.M.GetQuaternion()
+                pt = r_HAND_target.p
+                print "r_HAND_target = PyKDL.Frame(PyKDL.Rotation.Quaternion(%s,%s,%s,%s), PyKDL.Vector(%s,%s,%s))"%(qt[0],qt[1],qt[2],qt[3],pt[0],pt[1],pt[2])
+                print "self.q = np.array(", self.q, ")"
                 counter = 0
             counter += 1
 
@@ -282,13 +322,13 @@ class TestHierarchyControl:
                     delta_V_JLC[q_idx] = 0.0
                     J_JLC[q_idx,q_idx] = 0.0
 
-            J_JLC_inv = np.linalg.pinv(J_JLC)
+            J_JLC_inv = J_JLC.transpose()#np.linalg.pinv(J_JLC)
 
             N_JLC = identityMatrix(len(self.q)) - (J_JLC_inv * J_JLC)
             N_JLC_inv = np.linalg.pinv(N_JLC)
 
             v_max_JLC = 20.0/180.0*math.pi
-            kp_JLC = 1.0
+            kp_JLC = 10.0
             dx_JLC_des = kp_JLC * delta_V_JLC
 
             # min(1.0, v_max_JLC/np.linalg.norm(dx_JLC_des))
@@ -312,23 +352,24 @@ class TestHierarchyControl:
             delta_V_HAND[4] = r_HAND_diff.rot[1]
             delta_V_HAND[5] = r_HAND_diff.rot[2]
 
-#            v_max_HAND = 2.0
-#            kp_HAND = 2.0
-#            dx_HAND_des = kp_HAND * delta_V_HAND
-#            if v_max_HAND > np.linalg.norm(dx_HAND_des):
-#                vv_HAND = 1.0
-#            else:
-#                vv_HAND = v_max_HAND/np.linalg.norm(dx_HAND_des)
-#            dx_r_HAND_ref = - vv_HAND * dx_HAND_des
+            v_max_HAND = 4.0
+            kp_HAND = 10.0
+            dx_HAND_des = kp_HAND * delta_V_HAND
+            if v_max_HAND > np.linalg.norm(dx_HAND_des):
+                vv_HAND = 1.0
+            else:
+                vv_HAND = v_max_HAND/np.linalg.norm(dx_HAND_des)
+            dx_r_HAND_ref = vv_HAND * dx_HAND_des
 
             links_fk = {}
             for link in col.links:
                 links_fk[link.name] = solver.calculateFk('base', link.name, self.q)
 
-            activation_dist = 0.1
+            activation_dist = 0.05
 
             link_collision_map = {}
             if True:
+                # self collision
                 total_contacts = 0
                 for link1_name, link2_name in col.collision_pairs:
 
@@ -375,6 +416,55 @@ class TestHierarchyControl:
                                         link_collision_map[(link1_name, link2_name)] = []
                                     link_collision_map[(link1_name, link2_name)].append( (p1_B, p2_B, dist, n1_B, n2_B) )
 
+                # environment collisions
+                for link in col.links:
+                    if link.col == None:
+                        continue
+                    link1_name = link.name
+                    T_B_L1 = links_fk[link1_name]
+                    T_B_L2 = links_fk["base"]
+                    for col1 in link.col:
+                        for col2 in obst:
+                            T_B_C1 = T_B_L1 * col1.T_L_O
+                            T_B_C2 = T_B_L2 * col2.T_L_O
+                            dist = None
+                            if col1.type == "capsule" and col2.type == "capsule":
+                                line1 = (T_B_C1 * PyKDL.Vector(0, -col1.length/2, 0), T_B_C1 * PyKDL.Vector(0, col1.length/2, 0))
+                                line2 = (T_B_C2 * PyKDL.Vector(0, -col2.length/2, 0), T_B_C2 * PyKDL.Vector(0, col2.length/2, 0))
+                                dist, p2_B, p1_B = self.distanceLines(line1, line2)
+                            elif col1.type == "capsule" and col2.type == "sphere":
+                                line = (T_B_C1 * PyKDL.Vector(0, -col1.length/2, 0), T_B_C1 * PyKDL.Vector(0, col1.length/2, 0))
+                                pt = T_B_C2 * PyKDL.Vector()
+                                dist, p1_B, p2_B = self.distanceLinePoint(line, pt)
+                            elif col1.type == "sphere" and col2.type == "capsule":
+                                pt = T_B_C1 * PyKDL.Vector()
+                                line = (T_B_C2 * PyKDL.Vector(0, -col2.length/2, 0), T_B_C2 * PyKDL.Vector(0, col2.length/2, 0))
+                                dist, p1_B, p2_B = self.distancePointLine(pt, line)
+                            elif col1.type == "sphere" and col2.type == "sphere":
+                                dist, p2_B, p1_B = self.distancePoints(T_B_C1 * PyKDL.Vector(), T_B_C2 * PyKDL.Vector())
+#                                print "a:",dist, p1_B, p2_B
+                            else:
+                                print "ERROR: unknown collision type:", col1.type, col2.type
+                                exit(0)
+
+                            if dist != None:
+                                dist -= col1.radius + col2.radius
+                                v = p2_B - p1_B
+                                v.Normalize()
+                                n1_B = v
+                                n2_B = -v
+                                p1_B += v * col1.radius
+                                p2_B -= v * col2.radius
+
+#                                if col1.type == "sphere" and col2.type == "sphere":
+#                                    print "b:",dist, p1_B, p2_B
+
+                                if dist < activation_dist:
+                                    if not (link1_name, "base") in link_collision_map:
+                                        link_collision_map[(link1_name, "base")] = []
+                                    link_collision_map[(link1_name, "base")].append( (p1_B, p2_B, dist, n1_B, n2_B) )
+                            
+
             omega_col = np.matrix(np.zeros( (len(self.q),1) ))
             Ncol = identityMatrix(len(self.q))
             m_id = 0
@@ -419,21 +509,17 @@ class TestHierarchyControl:
 
                     # repulsive velocity
                     V_max = 10.0
+                    dist = max(dist, 0.0)
                     depth = (activation_dist - dist)
 #                    Vrep = V_max * depth * depth / (activation_dist * activation_dist)
                     Vrep = V_max * depth / activation_dist
                     Vrep = max(Vrep, 0.01)
 
-#                    print "depth, Vrep", depth, Vrep
-
 #                    # the mapping between motions along contact normal and the Cartesian coordinates
                     e1 = n1_L1
                     e2 = n2_L2
-#                    print "e1", e1
-#                    print "e2", e2
                     Jd1 = np.matrix([e1[0], e1[1], e1[2]])
                     Jd2 = np.matrix([e2[0], e2[1], e2[2]])
-#                    print "Jd1.shape", Jd1.shape
 
                     # rewrite the linear part of the jacobian
                     jac1_mx = np.matrix(np.zeros( (3, len(self.q)) ))
@@ -445,27 +531,17 @@ class TestHierarchyControl:
                             jac1_mx[row_idx, q_idx] = col1[row_idx]
                             jac2_mx[row_idx, q_idx] = col2[row_idx]
 
-#                    print "jac1_mx, jac2_mx"
-#                    print jac1_mx
-#                    print jac2_mx
-
-#                    print "jac1_mx.shape", jac1_mx.shape
                     Jcol1 = Jd1 * jac1_mx
                     Jcol2 = Jd2 * jac2_mx
-#                    print "Jcol2.shape", Jcol2.shape
-
-#                    print "Jcol1"
-#                    print Jcol1
-#                    print "Jcol2"
-#                    print Jcol2
-
 
                     Jcol = np.matrix(np.zeros( (2, len(self.q)) ))
                     for q_idx in range(len(self.q)):
                         Jcol[0, q_idx] = Jcol1[0, q_idx]
                         Jcol[1, q_idx] = Jcol2[0, q_idx]
 
-                    Jcol_pinv = np.linalg.pinv(Jcol)
+                    # TODO: is the transposition ok?
+#                    Jcol_pinv = np.linalg.pinv(Jcol)
+                    Jcol_pinv = Jcol.transpose()
 
 #                    Ncol1 = identityMatrix(len(q)) - np.linalg.pinv(Jcol1) * Jcol1
 #                    Ncol2 = identityMatrix(len(q)) - np.linalg.pinv(Jcol2) * Jcol2
@@ -498,6 +574,7 @@ class TestHierarchyControl:
                     Ncol12 = identityMatrix(len(self.q)) - (V * a_des * V.transpose())
 #                    Ncol12 = identityMatrix(len(self.q)) - (Jcol * a_des * Jcol.transpose())
                     Ncol = Ncol * Ncol12
+#                    d_omega = Jcol_prec_inv * np.matrix([Vrep, Vrep]).transpose()
                     d_omega = Jcol_pinv * np.matrix([Vrep, Vrep]).transpose()
                     omega_col += d_omega
 
@@ -508,31 +585,16 @@ class TestHierarchyControl:
 
             self.pub_marker.eraseMarkers(m_id, 10, frame_id='base', namespace='default')
 
+
             Ncol_inv = np.linalg.pinv(Ncol)
-#            print "Ncol"
-#            print Ncol
 
-#            print "Ncol_inv"
-#            print Ncol_inv
-#            N_r_HAND_inv = np.linalg.pinv(N_r_HAND)
+#            J_r_HAND_prec = J_r_HAND * (Ncol * N_JLC)
+#            J_r_HAND_prec_inv = np.linalg.pinv(J_r_HAND_prec)
 
-#            omega = J_JLC_inv * np.matrix(dx_JLC_ref).transpose() + N_JLC_inv * (omega_col + Ncol_inv * (omega_r_HAND))# + N_r_HAND_inv * omega_l_HAND))
-#            omega = J_JLC_inv * np.matrix(dx_JLC_ref).transpose() + N_JLC.transpose() * (omega_col + Ncol.transpose() * (omega_r_HAND))# + N_r_HAND.transpose() * omega_l_HAND))
-
-#            omega = J_JLC_inv * np.matrix(dx_JLC_ref).transpose() + N_JLC.transpose() * (J_r_HAND_inv * np.matrix(delta_V_HAND).transpose())
-            omega = J_JLC_inv * np.matrix(dx_JLC_ref).transpose() + N_JLC.transpose() * (omega_col + (Ncol_inv * J_r_HAND_inv) * np.matrix(delta_V_HAND).transpose())
+#            omega = J_JLC_inv * np.matrix(dx_JLC_ref).transpose() + N_JLC.transpose() * (omega_col + (Ncol_inv * J_r_HAND_inv) * np.matrix(dx_r_HAND_ref).transpose())
+            omega = J_JLC_inv * np.matrix(dx_JLC_ref).transpose() + N_JLC.transpose() * (omega_col + (Ncol.transpose() * J_r_HAND_inv) * np.matrix(dx_r_HAND_ref).transpose())
+#            omega = J_JLC_inv * np.matrix(dx_JLC_ref).transpose() + np.linalg.pinv(N_JLC) * omega_col
 #            omega = omega_col
-
-#            omega = (J_r_HAND_inv * np.matrix(dx_r_HAND_ref).transpose())
-#            omega = J_r_HAND_inv * np.matrix(delta_V_HAND).transpose()
-
-
-#            print "omega", omega
-
-#            print "dx_JLC_ref"
-#            print dx_JLC_ref
-#            print "dx_HAND_ref"
-#            print dx_HAND_ref
 
             omega_vector = np.empty(len(self.q))
             for q_idx in range(len(self.q)):
@@ -550,6 +612,7 @@ class TestHierarchyControl:
 #                print self.q
                 m_id = 0
                 m_id = self.publishRobotModelVis(m_id, col, links_fk)
+                m_id = self.publishObstaclesVis(m_id, obst)
                 last_time = rospy.Time.now()
                 self.publishJointState()
                 self.publishTransform(r_HAND_target, "hand_dest")
