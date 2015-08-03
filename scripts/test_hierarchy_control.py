@@ -29,7 +29,6 @@ import roslib
 roslib.load_manifest('planar_manipulator')
 
 import rospy
-import tf
 
 from std_msgs.msg import *
 from sensor_msgs.msg import *
@@ -46,33 +45,13 @@ import PyKDL
 import math
 import numpy as np
 import copy
-import matplotlib.pyplot as plt
-import thread
 import random
-import openravepy
-from openravepy import *
-from optparse import OptionParser
-from openravepy.misc import OpenRAVEGlobalArguments
 import itertools
 import rospkg
-import multiprocessing
 
 import velmautils
-from velma import Velma
 import fk_ik
 import collision_model
-
-import openraveinstance
-import conversions as conv
-import rosparam
-
-
-
-def identityMatrix(size):
-    I = np.matrix(numpy.zeros( (size, size) ))
-    for idx in range(size):
-        I[idx,idx] = 1.0
-    return I
 
 class TestHierarchyControl:
     """
@@ -88,7 +67,7 @@ class TestHierarchyControl:
     def distancePoints(self, pt1, pt2):
         return (pt1-pt2).Norm(), pt1, pt2
 
-    # returns (distance, p_pt, p_line)
+    # returns (distance, p_line, p_pt)
     def distanceLinePoint(self, line, pt):
         a, b = line
         v = b - a
@@ -96,14 +75,14 @@ class TestHierarchyControl:
         tb = PyKDL.dot(v, b)
         tpt = PyKDL.dot(v, pt)
         if tpt <= ta:
-            return (a-pt).Norm(), pt, a
+            return (a-pt).Norm(), a, pt
         elif tpt >= tb:
-            return (b-pt).Norm(), pt, b
+            return (b-pt).Norm(), b, pt
         else:
             n = PyKDL.Vector(v.y(), -v.x(), v.z())
             n.Normalize()
             diff = PyKDL.dot(n, a) - PyKDL.dot(n, pt)
-            return abs(diff), pt, pt + (diff * n)
+            return abs(diff), pt + (diff * n), pt
 
     # returns (distance, p_pt, p_line)
     def distancePointLine(self, pt, line):
@@ -112,7 +91,6 @@ class TestHierarchyControl:
 
     # returns (distance, p_l1, p_l2)
     def distanceLines(self, l1, l2):
-#        print "distanceLines", l1, l2
         x1, x2, x3, x4 = l1[0].x(), l1[1].x(), l2[0].x(), l2[1].x()
         y1, y2, y3, y4 = l1[0].y(), l1[1].y(), l2[0].y(), l2[1].y()
         denom = (x1-x2)*(y3-y4)-(y1-y2)*(x3-x4)
@@ -125,10 +103,10 @@ class TestHierarchyControl:
                 ((yi >= y3 and yi <= y4) or (yi >= y4 and yi <= y3)):
                 return 0.0, PyKDL.Vector(xi, yi, 0.0), PyKDL.Vector(xi, yi, 0.0)
         dists = [
-        (self.distanceLinePoint(l1, l2[0]), True),
-        (self.distanceLinePoint(l1, l2[1]), True),
-        (self.distanceLinePoint(l2, l1[0]), False),
-        (self.distanceLinePoint(l2, l1[1]), False),
+        (self.distanceLinePoint(l1, l2[0]), False),
+        (self.distanceLinePoint(l1, l2[1]), False),
+        (self.distanceLinePoint(l2, l1[0]), True),
+        (self.distanceLinePoint(l2, l1[1]), True),
         ]
         min_dist = None
         for d, swap_points in dists:
@@ -213,10 +191,26 @@ class TestHierarchyControl:
                 dist, p1, p2 = self.distanceLines(line, line2)
 
                 m_id = 0
-                m_id = self.pub_marker.publishVectorMarker(line[0], line[1], m_id, 1, 0, 0, frame='world', namespace='default', scale=0.02)
-                m_id = self.pub_marker.publishVectorMarker(line2[0], line2[1], m_id, 0, 1, 0, frame='world', namespace='default', scale=0.02)
+                m_id = self.pub_marker.publishVectorMarker(line[0], line[1], m_id, 0, 1, 0, frame='world', namespace='default', scale=0.02)
+                m_id = self.pub_marker.publishVectorMarker(line2[0], line2[1], m_id, 1, 0, 0, frame='world', namespace='default', scale=0.02)
                 m_id = self.pub_marker.publishVectorMarker(p1, p2, m_id, 1, 1, 1, frame='world', namespace='default', scale=0.02)
                 print line, line2, dist
+                raw_input(".")
+
+            exit(0)
+
+        # TEST: point - point distance
+        if False:
+            while not rospy.is_shutdown():
+                pt1 = PyKDL.Vector(random.uniform(-1, 1), random.uniform(-1, 1), 0)
+                pt2 = PyKDL.Vector(random.uniform(-1, 1), random.uniform(-1, 1), 0)
+                dist, p1, p2 = self.distancePoints(pt1, pt2)
+
+                m_id = 0
+                m_id = self.pub_marker.publishSinglePointMarker(p1, m_id, r=0, g=1, b=0, a=1, namespace='default', frame_id='world', m_type=Marker.SPHERE, scale=Vector3(0.1, 0.1, 0.1), T=None)
+                m_id = self.pub_marker.publishSinglePointMarker(p2, m_id, r=1, g=0, b=0, a=1, namespace='default', frame_id='world', m_type=Marker.SPHERE, scale=Vector3(0.1, 0.1, 0.1), T=None)
+                m_id = self.pub_marker.publishVectorMarker(p1, p2, m_id, 1, 0, 0, frame='world', namespace='default', scale=0.02)
+                print pt1, pt2, dist
                 raw_input(".")
 
             exit(0)
@@ -324,7 +318,7 @@ class TestHierarchyControl:
 
             J_JLC_inv = J_JLC.transpose()#np.linalg.pinv(J_JLC)
 
-            N_JLC = identityMatrix(len(self.q)) - (J_JLC_inv * J_JLC)
+            N_JLC = np.matrix(np.identity(len(self.q))) - (J_JLC_inv * J_JLC)
             N_JLC_inv = np.linalg.pinv(N_JLC)
 
             v_max_JLC = 20.0/180.0*math.pi
@@ -386,7 +380,7 @@ class TestHierarchyControl:
                             if col1.type == "capsule" and col2.type == "capsule":
                                 line1 = (T_B_C1 * PyKDL.Vector(0, -col1.length/2, 0), T_B_C1 * PyKDL.Vector(0, col1.length/2, 0))
                                 line2 = (T_B_C2 * PyKDL.Vector(0, -col2.length/2, 0), T_B_C2 * PyKDL.Vector(0, col2.length/2, 0))
-                                dist, p2_B, p1_B = self.distanceLines(line1, line2)
+                                dist, p1_B, p2_B = self.distanceLines(line1, line2)
                             elif col1.type == "capsule" and col2.type == "sphere":
                                 line = (T_B_C1 * PyKDL.Vector(0, -col1.length/2, 0), T_B_C1 * PyKDL.Vector(0, col1.length/2, 0))
                                 pt = T_B_C2 * PyKDL.Vector()
@@ -408,8 +402,8 @@ class TestHierarchyControl:
                                 v.Normalize()
                                 n1_B = v
                                 n2_B = -v
-                                p1_B += v * col1.radius
-                                p2_B -= v * col2.radius
+                                p1_B += n1_B * col1.radius
+                                p2_B += n2_B * col2.radius
 
                                 if dist < activation_dist:
                                     if not (link1_name, link2_name) in link_collision_map:
@@ -431,7 +425,7 @@ class TestHierarchyControl:
                             if col1.type == "capsule" and col2.type == "capsule":
                                 line1 = (T_B_C1 * PyKDL.Vector(0, -col1.length/2, 0), T_B_C1 * PyKDL.Vector(0, col1.length/2, 0))
                                 line2 = (T_B_C2 * PyKDL.Vector(0, -col2.length/2, 0), T_B_C2 * PyKDL.Vector(0, col2.length/2, 0))
-                                dist, p2_B, p1_B = self.distanceLines(line1, line2)
+                                dist, p1_B, p2_B = self.distanceLines(line1, line2)
                             elif col1.type == "capsule" and col2.type == "sphere":
                                 line = (T_B_C1 * PyKDL.Vector(0, -col1.length/2, 0), T_B_C1 * PyKDL.Vector(0, col1.length/2, 0))
                                 pt = T_B_C2 * PyKDL.Vector()
@@ -441,7 +435,7 @@ class TestHierarchyControl:
                                 line = (T_B_C2 * PyKDL.Vector(0, -col2.length/2, 0), T_B_C2 * PyKDL.Vector(0, col2.length/2, 0))
                                 dist, p1_B, p2_B = self.distancePointLine(pt, line)
                             elif col1.type == "sphere" and col2.type == "sphere":
-                                dist, p2_B, p1_B = self.distancePoints(T_B_C1 * PyKDL.Vector(), T_B_C2 * PyKDL.Vector())
+                                dist, p1_B, p2_B = self.distancePoints(T_B_C1 * PyKDL.Vector(), T_B_C2 * PyKDL.Vector())
 #                                print "a:",dist, p1_B, p2_B
                             else:
                                 print "ERROR: unknown collision type:", col1.type, col2.type
@@ -453,8 +447,8 @@ class TestHierarchyControl:
                                 v.Normalize()
                                 n1_B = v
                                 n2_B = -v
-                                p1_B += v * col1.radius
-                                p2_B -= v * col2.radius
+                                p1_B += n1_B * col1.radius
+                                p2_B += n2_B * col2.radius
 
 #                                if col1.type == "sphere" and col2.type == "sphere":
 #                                    print "b:",dist, p1_B, p2_B
@@ -466,7 +460,7 @@ class TestHierarchyControl:
                             
 
             omega_col = np.matrix(np.zeros( (len(self.q),1) ))
-            Ncol = identityMatrix(len(self.q))
+            Ncol = np.matrix(np.identity(len(self.q)))
             m_id = 0
             for link1_name, link2_name in link_collision_map:
                 for (p1_B, p2_B, dist, n1_B, n2_B) in link_collision_map[ (link1_name, link2_name) ]:
@@ -475,7 +469,8 @@ class TestHierarchyControl:
                     else:
                         m_id = self.pub_marker.publishVectorMarker(p1_B, p2_B, m_id, 1, 0, 0, frame='base', namespace='default', scale=0.02)
 
-                    T_L1_B = links_fk[link1_name].Inverse()
+                    T_B_L1 = links_fk[link1_name]
+                    T_L1_B = T_B_L1.Inverse()
                     T_B_L2 = links_fk[link2_name]
                     T_L2_B = T_B_L2.Inverse()
                     p1_L1 = T_L1_B * p1_B
@@ -492,7 +487,7 @@ class TestHierarchyControl:
                     jac2 = PyKDL.Jacobian(len(self.q))
                     common_link_name = solver.getJacobiansForPairX(jac1, jac2, link1_name, p1_L1, link2_name, p2_L2, self.q, None)
 
-                    T_B_Lc = links_fk[common_link_name]
+#                    T_B_Lc = links_fk[common_link_name]
 
 #                    jac1.changeBase(T_B_Lc.M)
 #                    jac2.changeBase(T_B_Lc.M)
@@ -513,7 +508,7 @@ class TestHierarchyControl:
                     depth = (activation_dist - dist)
 #                    Vrep = V_max * depth * depth / (activation_dist * activation_dist)
                     Vrep = V_max * depth / activation_dist
-                    Vrep = max(Vrep, 0.01)
+                    Vrep = -max(Vrep, 0.01)
 
 #                    # the mapping between motions along contact normal and the Cartesian coordinates
                     e1 = n1_L1
@@ -543,14 +538,6 @@ class TestHierarchyControl:
 #                    Jcol_pinv = np.linalg.pinv(Jcol)
                     Jcol_pinv = Jcol.transpose()
 
-#                    Ncol1 = identityMatrix(len(q)) - np.linalg.pinv(Jcol1) * Jcol1
-#                    Ncol2 = identityMatrix(len(q)) - np.linalg.pinv(Jcol2) * Jcol2
-#                    Ncol = Ncol * Ncol1
-#                    Ncol = Ncol * Ncol2
-#                    omega_col += np.linalg.pinv(Jcol1) * (-Vrep)
-#                    omega_col += np.linalg.pinv(Jcol2) * (Vrep)
-#                    continue
-
                     activation = min(1.0, 2.0*depth/activation_dist)
                     a_des = np.matrix(np.zeros( (len(self.q),len(self.q)) ))
                     a_des[0,0] = a_des[1,1] = activation
@@ -571,7 +558,7 @@ class TestHierarchyControl:
 
 #                    Ncol12 = identityMatrix(len(self.q)) - Jcol_pinv * Jcol
 #                    Ncol12 = identityMatrix(len(self.q)) - Jcol.transpose() * (Jcol_pinv).transpose()
-                    Ncol12 = identityMatrix(len(self.q)) - (V * a_des * V.transpose())
+                    Ncol12 = np.matrix(np.identity(len(self.q))) - (V * a_des * V.transpose())
 #                    Ncol12 = identityMatrix(len(self.q)) - (Jcol * a_des * Jcol.transpose())
                     Ncol = Ncol * Ncol12
 #                    d_omega = Jcol_prec_inv * np.matrix([Vrep, Vrep]).transpose()
