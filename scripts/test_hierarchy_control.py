@@ -173,14 +173,19 @@ class TestHierarchyControl:
 
         rospack = rospkg.RosPack()
 
-        use6dof = False
+#        model = "5dof"
+#        model = "6dof"
+        model = "two_arms"
 
-        if use6dof:
+        if model == "6dof":
             urdf_path=rospack.get_path('planar_manipulator_defs') + '/robots/planar_manipulator_6dof.urdf'
             srdf_path=rospack.get_path('planar_manipulator_defs') + '/robots/planar_manipulator_6dof.srdf'
-        else:
+        elif model == "5dof":
             urdf_path=rospack.get_path('planar_manipulator_defs') + '/robots/planar_manipulator.urdf'
             srdf_path=rospack.get_path('planar_manipulator_defs') + '/robots/planar_manipulator.srdf'
+        elif model == "two_arms":
+            urdf_path=rospack.get_path('planar_manipulator_defs') + '/robots/planar_two_arms.urdf'
+            srdf_path=rospack.get_path('planar_manipulator_defs') + '/robots/planar_two_arms.srdf'
 
         # TEST: line - line distance
         if False:
@@ -218,12 +223,16 @@ class TestHierarchyControl:
         col = collision_model.CollisionModel()
         col.readUrdfSrdf(urdf_path, srdf_path)
 
-        if use6dof:
+        if model == "6dof":
             self.joint_names = ["0_joint", "1_joint", "2_joint", "3_joint", "4_joint", "5_joint"]
-        else:
+            effector_name = 'effector'
+        elif model == "5dof":
             self.joint_names = ["0_joint", "1_joint", "2_joint", "3_joint", "4_joint"]
+            effector_name = 'effector'
+        elif model == "two_arms":
+            self.joint_names = ["torso_0_joint", "left_0_joint", "left_1_joint", "left_2_joint", "left_3_joint", "right_0_joint", "right_1_joint", "right_2_joint", "right_3_joint"]
+            effector_name = 'left_effector'
         self.q = np.zeros( len(self.joint_names) )
-
         test_cases = [
         (1.1, -2.3, 1.5, 1.5, 1.5),
         (-1.1, 2.3, -1.5, -1.5, -1.5),
@@ -232,11 +241,11 @@ class TestHierarchyControl:
         (0.2, 0.4, 1.5, 1.5, 1.5),
         (-0.2, -0.4, -1.5, -1.5, -1.5),
         ]
-        self.q[0] = 1.1
-        self.q[1] = -2.3
-        self.q[2] = 1.5
-        self.q[3] = 1.5
-        self.q[4] = 1.5
+#        self.q[0] = 1.1
+#        self.q[1] = -2.3
+#        self.q[2] = 1.5
+#        self.q[3] = 1.5
+#        self.q[4] = 1.5
 
 #        self.q = np.array(test_cases[4])
 
@@ -283,12 +292,24 @@ class TestHierarchyControl:
         r_HAND_target = PyKDL.Frame(PyKDL.Vector(0.5,0.5,0))
         last_time = rospy.Time.now()
 
-        self.q = np.array( [-0.64403894,  1.2374733,   1.20122587, -0.81931807, -1.40127305] )
+        self.q = np.array( [ 0.29760048,  0.64966241, -0.00425542, -0.00273116, -0.45076108, -0.48149999,  0.63663022,  0.34753589,  0.02792346] )
 
         counter = 10000
         while not rospy.is_shutdown():
             if counter > 800:
-                r_HAND_target = PyKDL.Frame(PyKDL.Rotation.RotZ(random.uniform(-math.pi, math.pi)), PyKDL.Vector(random.uniform(-1,1), random.uniform(0,2), 0))
+                if model == "two_arms":
+                    r_HAND_target = PyKDL.Frame(PyKDL.Rotation.RotZ(random.uniform(-math.pi, math.pi)), PyKDL.Vector(random.uniform(-1,0), random.uniform(0,1.8), 0))
+                else:
+                    r_HAND_target = PyKDL.Frame(PyKDL.Rotation.RotZ(random.uniform(-math.pi, math.pi)), PyKDL.Vector(random.uniform(-1,1), random.uniform(0,2), 0))
+
+#                r_HAND_target = PyKDL.Frame(PyKDL.Rotation.Quaternion(0.0,0.0,-0.98100002989,0.194007580664), PyKDL.Vector(-0.129108034334,0.518606130706,0.0))
+
+#                r_HAND_target = PyKDL.Frame(PyKDL.Rotation.Quaternion(0.0,0.0,0.470814280381,0.882232346601), PyKDL.Vector(0.676567476122,0.0206561816531,0.0))
+
+#r_HAND_target = PyKDL.Frame(PyKDL.Rotation.Quaternion(0.0,0.0,0.50451570265,0.863402516663), PyKDL.Vector(0.252380653828,0.923309935287,0.0))
+#self.q = np.array( [-0.29968745  0.66939973 -2.49850991  1.87533697  2.63546305] )
+#r_HAND_target = PyKDL.Frame(PyKDL.Rotation.Quaternion(0.0,0.0,0.704294768084,0.70990765572), PyKDL.Vector(0.334245569765,1.82368612057,0.0))
+#self.q = np.array( [ 0.33203731  0.071835   -2.46646112  1.14339024  1.97684146] )
 
 #                r_HAND_target = PyKDL.Frame(PyKDL.Rotation.Quaternion(0.0,0.0,0.924467039084,-0.381261975087), PyKDL.Vector(0.261697539135,0.97235224304,0.0))
 #r_HAND_target = PyKDL.Frame(PyKDL.Rotation.Quaternion(0.0,0.0,0.894763681298,0.446539980999), PyKDL.Vector(0.354981453046,0.604598917063,0.0))
@@ -332,9 +353,9 @@ class TestHierarchyControl:
                 vv_JLC = v_max_JLC/np.linalg.norm(dx_JLC_des)
             dx_JLC_ref = - vv_JLC * dx_JLC_des
 
-            J_r_HAND = solver.getJacobian('base', 'effector', self.q, base_end=False)
+            J_r_HAND = solver.getJacobian('base', effector_name, self.q, base_end=False)
             J_r_HAND_inv = np.linalg.pinv(J_r_HAND)
-            T_B_E = solver.calculateFk('base', 'effector', self.q)
+            T_B_E = solver.calculateFk('base', effector_name, self.q)
             r_HAND_current = T_B_E
             r_HAND_diff = PyKDL.diff(r_HAND_current, r_HAND_target)
 
@@ -503,12 +524,13 @@ class TestHierarchyControl:
 #                    print jac2
 
                     # repulsive velocity
-                    V_max = 10.0
+                    V_max = 20.0
                     dist = max(dist, 0.0)
                     depth = (activation_dist - dist)
 #                    Vrep = V_max * depth * depth / (activation_dist * activation_dist)
                     Vrep = V_max * depth / activation_dist
-                    Vrep = -max(Vrep, 0.01)
+#                    Vrep = -max(Vrep, 0.01)
+                    Vrep = -Vrep
 
 #                    # the mapping between motions along contact normal and the Cartesian coordinates
                     e1 = n1_L1
@@ -534,9 +556,10 @@ class TestHierarchyControl:
                         Jcol[0, q_idx] = Jcol1[0, q_idx]
                         Jcol[1, q_idx] = Jcol2[0, q_idx]
 
+#                    Jcol = Jcol * (Ncol * N_JLC)
                     # TODO: is the transposition ok?
-#                    Jcol_pinv = np.linalg.pinv(Jcol)
-                    Jcol_pinv = Jcol.transpose()
+                    Jcol_pinv = np.linalg.pinv(Jcol)
+#                    Jcol_pinv = Jcol.transpose()
 
                     activation = min(1.0, 2.0*depth/activation_dist)
                     a_des = np.matrix(np.zeros( (len(self.q),len(self.q)) ))
@@ -556,12 +579,11 @@ class TestHierarchyControl:
 #                    print "S"
 #                    print S
 
-#                    Ncol12 = identityMatrix(len(self.q)) - Jcol_pinv * Jcol
-#                    Ncol12 = identityMatrix(len(self.q)) - Jcol.transpose() * (Jcol_pinv).transpose()
+#                    Ncol12 = np.matrix(np.identity(len(self.q))) - Jcol.transpose() * (Jcol_pinv).transpose()
                     Ncol12 = np.matrix(np.identity(len(self.q))) - (V * a_des * V.transpose())
-#                    Ncol12 = identityMatrix(len(self.q)) - (Jcol * a_des * Jcol.transpose())
                     Ncol = Ncol * Ncol12
 #                    d_omega = Jcol_prec_inv * np.matrix([Vrep, Vrep]).transpose()
+
                     d_omega = Jcol_pinv * np.matrix([Vrep, Vrep]).transpose()
                     omega_col += d_omega
 
@@ -575,11 +597,11 @@ class TestHierarchyControl:
 
             Ncol_inv = np.linalg.pinv(Ncol)
 
-#            J_r_HAND_prec = J_r_HAND * (Ncol * N_JLC)
-#            J_r_HAND_prec_inv = np.linalg.pinv(J_r_HAND_prec)
+            J_r_HAND_prec = J_r_HAND * (Ncol * N_JLC)
+            J_r_HAND_prec_inv = np.linalg.pinv(J_r_HAND_prec)
 
-#            omega = J_JLC_inv * np.matrix(dx_JLC_ref).transpose() + N_JLC.transpose() * (omega_col + (Ncol_inv * J_r_HAND_inv) * np.matrix(dx_r_HAND_ref).transpose())
             omega = J_JLC_inv * np.matrix(dx_JLC_ref).transpose() + N_JLC.transpose() * (omega_col + (Ncol.transpose() * J_r_HAND_inv) * np.matrix(dx_r_HAND_ref).transpose())
+#            omega = J_JLC_inv * np.matrix(dx_JLC_ref).transpose() + N_JLC_inv         * (omega_col + (Ncol_inv * J_r_HAND_prec_inv) * np.matrix(dx_r_HAND_ref).transpose())
 #            omega = J_JLC_inv * np.matrix(dx_JLC_ref).transpose() + np.linalg.pinv(N_JLC) * omega_col
 #            omega = omega_col
 
