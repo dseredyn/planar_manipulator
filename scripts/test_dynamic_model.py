@@ -52,8 +52,9 @@ import rospkg
 import velmautils
 import fk_ik
 import collision_model
+import planar5
 
-class TestHierarchyControl:
+class TestDynamicModel:
     """
 
 """
@@ -169,7 +170,20 @@ class TestHierarchyControl:
                     m_id = self.pub_marker.publishSinglePointMarker(PyKDL.Vector(), m_id, r=1, g=0, b=0, a=alpha, namespace=namespace, frame_id='base', m_type=Marker.CYLINDER, scale=scale, T=T_B_O * T_O_C)
         return m_id
 
+    def jointLimitTrq(self, hl, ll, ls, r_max, q):
+        if q > (hl - ls):
+            return -1.0 * ((q - hl + ls) / ls) * ((q - hl + ls) / ls) * r_max
+        elif q < (ll + ls):
+            return ((ll + ls - q) / ls) * ((ll + ls - q) / ls) * r_max
+        else:
+            return 0.0
+
     def spin(self):
+
+        dyn_model = planar5.DynModelPlanar5()
+#        ddq = dyn_model.accel(np.zeros(5), np.array([0,0,0,0,0]), np.array([1,0,0,0,0]))
+#        print ddq
+#        exit(0)
 
         rospack = rospkg.RosPack()
 
@@ -232,30 +246,16 @@ class TestHierarchyControl:
         elif model == "two_arms":
             self.joint_names = ["torso_0_joint", "left_0_joint", "left_1_joint", "left_2_joint", "left_3_joint", "right_0_joint", "right_1_joint", "right_2_joint", "right_3_joint"]
             effector_name = 'left_effector'
-        self.q = np.zeros( len(self.joint_names) )
-        test_cases = [
-        (1.1, -2.3, 1.5, 1.5, 1.5),
-        (-1.1, 2.3, -1.5, -1.5, -1.5),
-        (0.0, 0.0, 1.5, 1.5, 1.5),
-        (0.0, 0.0, -1.5, -1.5, -1.5),
-        (0.2, 0.4, 1.5, 1.5, 1.5),
-        (-0.2, -0.4, -1.5, -1.5, -1.5),
-        ]
-#        self.q[0] = 1.1
-#        self.q[1] = -2.3
-#        self.q[2] = 1.5
-#        self.q[3] = 1.5
-#        self.q[4] = 1.5
 
-#        self.q = np.array(test_cases[4])
+        # robot state
+        self.q = np.zeros( len(self.joint_names) )
+        self.dq = np.zeros( len(self.joint_names) )
 
         solver = fk_ik.FkIkSolver(self.joint_names, [], None)
 
         self.publishJointState()
 
-#        rospy.sleep(1)
-#        exit(0)
-
+        # obstacles
         obst = []
         obj = collision_model.CollisionModel.Collision()
         obj.type = "capsule"
@@ -273,57 +273,37 @@ class TestHierarchyControl:
 
         obj = collision_model.CollisionModel.Collision()
         obj.type = "sphere"
-        obj.T_L_O = PyKDL.Frame(PyKDL.Vector(1, 0, 0))
+        obj.T_L_O = PyKDL.Frame(PyKDL.Vector(1, -0.2, 0))
         obj.radius = 0.05
         obst.append( obj )
 
-#        rospy.sleep(1)
-#        T_B_E = solver.calculateFk("base", "effector", self.q)
-#        print T_B_E
-
-        r_HAND_targets = [
-        PyKDL.Frame(PyKDL.Vector(0.1,1.0,0.0)),
-        PyKDL.Frame(PyKDL.Vector(0.1,1.7,0.0)),
-#        PyKDL.Frame(PyKDL.Rotation.RotY(90.0/180.0*math.pi), PyKDL.Vector(0.2,-0.5,0.0)),
-        ]
-
-        target_idx = 0
-        r_HAND_target = r_HAND_targets[target_idx]
-        target_idx += 1
-
-        r_HAND_target = PyKDL.Frame(PyKDL.Vector(0.5,0.5,0))
         last_time = rospy.Time.now()
 
-
+        obst_offset = 0.0
         counter = 10000
         while not rospy.is_shutdown():
+            obst_offset += 0.0001
+            obst[-1].T_L_O = PyKDL.Frame(PyKDL.Vector(1, -0.2+obst_offset, 0))
+
             if counter > 800:
                 if model == "two_arms":
                     r_HAND_target = PyKDL.Frame(PyKDL.Rotation.RotZ(random.uniform(-math.pi, math.pi)), PyKDL.Vector(random.uniform(-1,0), random.uniform(0,1.8), 0))
                 else:
                     r_HAND_target = PyKDL.Frame(PyKDL.Rotation.RotZ(random.uniform(-math.pi, math.pi)), PyKDL.Vector(random.uniform(0,2), random.uniform(-1,1), 0))
 
-#                r_HAND_target = PyKDL.Frame(PyKDL.Rotation.Quaternion(0.0,0.0,-0.98100002989,0.194007580664), PyKDL.Vector(-0.129108034334,0.518606130706,0.0))
-
-#                r_HAND_target = PyKDL.Frame(PyKDL.Rotation.Quaternion(0.0,0.0,0.470814280381,0.882232346601), PyKDL.Vector(0.676567476122,0.0206561816531,0.0))
-
-#r_HAND_target = PyKDL.Frame(PyKDL.Rotation.Quaternion(0.0,0.0,0.50451570265,0.863402516663), PyKDL.Vector(0.252380653828,0.923309935287,0.0))
-#self.q = np.array( [-0.29968745  0.66939973 -2.49850991  1.87533697  2.63546305] )
-#r_HAND_target = PyKDL.Frame(PyKDL.Rotation.Quaternion(0.0,0.0,0.704294768084,0.70990765572), PyKDL.Vector(0.334245569765,1.82368612057,0.0))
-#self.q = np.array( [ 0.33203731  0.071835   -2.46646112  1.14339024  1.97684146] )
-
-#                r_HAND_target = PyKDL.Frame(PyKDL.Rotation.Quaternion(0.0,0.0,0.924467039084,-0.381261975087), PyKDL.Vector(0.261697539135,0.97235224304,0.0))
-#r_HAND_target = PyKDL.Frame(PyKDL.Rotation.Quaternion(0.0,0.0,0.894763681298,0.446539980999), PyKDL.Vector(0.354981453046,0.604598917063,0.0))
-#self.q = np.array( [-0.89640518  0.44336642  1.96125279 -1.66533209 -2.19189403] )
-
                 qt = r_HAND_target.M.GetQuaternion()
                 pt = r_HAND_target.p
+                print "**** STATE ****"
                 print "r_HAND_target = PyKDL.Frame(PyKDL.Rotation.Quaternion(%s,%s,%s,%s), PyKDL.Vector(%s,%s,%s))"%(qt[0],qt[1],qt[2],qt[3],pt[0],pt[1],pt[2])
                 print "self.q = np.array(", self.q, ")"
+                print "self.dq = np.array(", self.dq, ")"
                 counter = 0
             counter += 1
 
             time_elapsed = rospy.Time.now() - last_time
+
+            M = dyn_model.inertia(np.matrix(self.q).transpose())
+            Minv = dyn_model.gaussjordan(M)
 
             J_JLC = np.matrix(numpy.zeros( (len(self.q), len(self.q)) ))
             delta_V_JLC = np.empty(len(self.q))
@@ -338,7 +318,7 @@ class TestHierarchyControl:
                     delta_V_JLC[q_idx] = 0.0
                     J_JLC[q_idx,q_idx] = 0.0
 
-            J_JLC_inv = J_JLC.transpose()#np.linalg.pinv(J_JLC)
+            J_JLC_inv = J_JLC.transpose()
 
             N_JLC = np.matrix(np.identity(len(self.q))) - (J_JLC_inv * J_JLC)
             N_JLC_inv = np.linalg.pinv(N_JLC)
@@ -494,7 +474,7 @@ class TestHierarchyControl:
                                     link_collision_map[(link1_name, "base")].append( (p1_B, p2_B, dist, n1_B, n2_B) )
                             
 
-            omega_col = np.matrix(np.zeros( (len(self.q),1) ))
+            torque_col = np.matrix(np.zeros( (len(self.q),1) ))
             Ncol = np.matrix(np.identity(len(self.q)))
             m_id = 0
             for link1_name, link2_name in link_collision_map:
@@ -522,31 +502,21 @@ class TestHierarchyControl:
                     jac2 = PyKDL.Jacobian(len(self.q))
                     common_link_name = solver.getJacobiansForPairX(jac1, jac2, link1_name, p1_L1, link2_name, p2_L2, self.q, None)
 
-#                    T_B_Lc = links_fk[common_link_name]
-
-#                    jac1.changeBase(T_B_Lc.M)
-#                    jac2.changeBase(T_B_Lc.M)
-#                    T_Lc_L1 = T_B_Lc.Inverse() * T_B_L1
-#                    T_Lc_L2 = T_B_Lc.Inverse() * T_B_L2
-#                    n1_Lc = PyKDL.Frame(T_Lc_L1.M) * n1_L1
-#                    n2_Lc = PyKDL.Frame(T_Lc_L2.M) * n2_L2
-
 #                    print link1_name, link2_name
-#                    print "jac1"
-#                    print jac1
-#                    print "jac2"
-#                    print jac2
 
-                    # repulsive velocity
-                    V_max = 20.0
-                    dist = max(dist, 0.0)
                     depth = (activation_dist - dist)
-#                    Vrep = V_max * depth * depth / (activation_dist * activation_dist)
-                    Vrep = V_max * depth / activation_dist
-#                    Vrep = -max(Vrep, 0.01)
-                    Vrep = -Vrep
 
-#                    # the mapping between motions along contact normal and the Cartesian coordinates
+                    # repulsive force
+                    Fmax = 2.0
+                    if dist <= activation_dist:
+                        f = (dist - activation_dist) / activation_dist
+                    else:
+                        f = 0.0
+                    Frep = Fmax * f * f
+
+                    K = 2.0 * Fmax / (activation_dist * activation_dist)
+
+                    # the mapping between motions along contact normal and the Cartesian coordinates
                     e1 = n1_L1
                     e2 = n2_L2
                     Jd1 = np.matrix([e1[0], e1[1], e1[2]])
@@ -565,46 +535,30 @@ class TestHierarchyControl:
                     Jcol1 = Jd1 * jac1_mx
                     Jcol2 = Jd2 * jac2_mx
 
-                    Jcol = np.matrix(np.zeros( (2, len(self.q)) ))
+                    Jcol = np.matrix(np.zeros( (1, len(self.q)) ))
                     for q_idx in range(len(self.q)):
-                        Jcol[0, q_idx] = Jcol1[0, q_idx]
-                        Jcol[1, q_idx] = Jcol2[0, q_idx]
-
-#                    Jcol = Jcol * (Ncol * N_JLC)
-                    # TODO: is the transposition ok?
-                    Jcol_pinv = np.linalg.pinv(Jcol)
-#                    Jcol_pinv = Jcol.transpose()
+                        Jcol[0, q_idx] = Jcol1[0, q_idx] + Jcol2[0, q_idx]
 
                     activation = min(1.0, 2.0*depth/activation_dist)
-                    a_des = np.matrix(np.zeros( (len(self.q),len(self.q)) ))
-                    a_des[0,0] = a_des[1,1] = activation
-
-                    U, S, V = numpy.linalg.svd(Jcol, full_matrices=True, compute_uv=True)
+                    a_des = activation
 
 #                    print "activation", activation
-#                    print "Jcol"
-#                    print Jcol
 #                    raw_input(".")
                     if rospy.is_shutdown():
                         exit(0)
 
-#                    print "V"
-#                    print V
-#                    print "S"
-#                    print S
-
-#                    Ncol12 = np.matrix(np.identity(len(self.q))) - Jcol.transpose() * (Jcol_pinv).transpose()
-                    Ncol12 = np.matrix(np.identity(len(self.q))) - (V * a_des * V.transpose())
+                    Ncol12 = np.matrix(np.identity(len(self.q))) - (Jcol.transpose() * a_des * Jcol)
                     Ncol = Ncol * Ncol12
-#                    d_omega = Jcol_prec_inv * np.matrix([Vrep, Vrep]).transpose()
 
-                    d_omega = Jcol_pinv * np.matrix([Vrep, Vrep]).transpose()
-                    omega_col += d_omega
+                    # calculate relative velocity between points
+                    ddij = Jcol * np.matrix(self.dq).transpose()
 
-#            print "omega_col", omega_col
-#            print dx_HAND_ref
+                    # calculate collision mass
+                    Mdij = Jcol * Minv * Jcol.transpose()
 
-#            omega_r_HAND = (J_r_HAND_inv * np.matrix(dx_r_HAND_ref).transpose())
+                    D = 2.0 * 0.7 * math.sqrt(Mdij * K)
+                    d_omega = Jcol.transpose() * (-Frep - D * ddij)
+                    torque_col += d_omega
 
             self.pub_marker.eraseMarkers(m_id, 10, frame_id='base', namespace='default')
 
@@ -614,21 +568,16 @@ class TestHierarchyControl:
             J_r_HAND_prec = J_r_HAND * (Ncol * N_JLC)
             J_r_HAND_prec_inv = np.linalg.pinv(J_r_HAND_prec)
 
-            omega = J_JLC_inv * np.matrix(dx_JLC_ref).transpose() + N_JLC.transpose() * (omega_col + (Ncol.transpose() * J_r_HAND_inv) * np.matrix(dx_r_HAND_ref).transpose())
-#            omega = J_JLC_inv * np.matrix(dx_JLC_ref).transpose() + N_JLC_inv         * (omega_col + (Ncol_inv * J_r_HAND_prec_inv) * np.matrix(dx_r_HAND_ref).transpose())
-#            omega = J_JLC_inv * np.matrix(dx_JLC_ref).transpose() + np.linalg.pinv(N_JLC) * omega_col
-#            omega = omega_col
+#            torque = J_JLC_inv * np.matrix(dx_JLC_ref).transpose() + N_JLC.transpose() * (torque_col + (Ncol.transpose() * J_r_HAND_inv) * np.matrix(dx_r_HAND_ref).transpose())
+            torque = J_JLC_inv * np.matrix(dx_JLC_ref).transpose() + N_JLC.transpose() * torque_col
 
-            omega_vector = np.empty(len(self.q))
+            time_d = 0.01
+            # simulate one step
+            ddq = dyn_model.accel(self.q, self.dq, torque)
             for q_idx in range(len(self.q)):
-                omega_vector[q_idx] = omega[q_idx][0]
+                self.dq[q_idx] += ddq[q_idx,0] * time_d
+                self.q[q_idx] += self.dq[q_idx] * time_d
 
-            max_norm = 0.5
-            omega_norm = np.linalg.norm(omega_vector)
-            if omega_norm > max_norm:
-                omega_vector *= max_norm / omega_norm
-
-            self.q += omega_vector * 0.02
 
             
             if time_elapsed.to_sec() > 0.05:
@@ -646,9 +595,9 @@ class TestHierarchyControl:
 
 if __name__ == '__main__':
 
-    rospy.init_node('test_hierarchy_control')
+    rospy.init_node('test_dynamic_model')
 
-    task = TestHierarchyControl()
+    task = TestDynamicModel()
     rospy.sleep(0.5)
 
     task.spin()
