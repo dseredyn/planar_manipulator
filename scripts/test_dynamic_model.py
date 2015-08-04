@@ -44,6 +44,7 @@ from tf2_msgs.msg import *
 import PyKDL
 import math
 import numpy as np
+import scipy
 import copy
 import random
 import itertools
@@ -247,9 +248,12 @@ class TestDynamicModel:
             self.joint_names = ["torso_0_joint", "left_0_joint", "left_1_joint", "left_2_joint", "left_3_joint", "right_0_joint", "right_1_joint", "right_2_joint", "right_3_joint"]
             effector_name = 'left_effector'
 
+        ndof = len(self.joint_names)
         # robot state
-        self.q = np.zeros( len(self.joint_names) )
-        self.dq = np.zeros( len(self.joint_names) )
+        self.q = np.zeros( ndof )
+        self.dq = np.zeros( ndof )
+
+
 
         solver = fk_ik.FkIkSolver(self.joint_names, [], None)
 
@@ -279,6 +283,12 @@ class TestDynamicModel:
 
         last_time = rospy.Time.now()
 
+        limit_range = np.zeros( ndof )
+        max_trq = np.zeros( ndof )
+        for q_idx in range( ndof ):
+            limit_range[q_idx] = 15.0/180.0*math.pi
+            max_trq[q_idx] = 2.0
+
         obst_offset = 0.0
         counter = 10000
         while not rospy.is_shutdown():
@@ -305,34 +315,53 @@ class TestDynamicModel:
             M = dyn_model.inertia(np.matrix(self.q).transpose())
             Minv = dyn_model.gaussjordan(M)
 
-            J_JLC = np.matrix(numpy.zeros( (len(self.q), len(self.q)) ))
-            delta_V_JLC = np.empty(len(self.q))
-            for q_idx in range(len(self.q)):
+            torque_JLC = np.zeros( ndof )
+            K = np.zeros( (ndof, ndof) )
+            for q_idx in range( ndof ):
+                torque_JLC[q_idx] = self.jointLimitTrq(solver.lim_upper[q_idx], solver.lim_lower[q_idx], limit_range[q_idx], max_trq[q_idx], self.q[q_idx])
+                if abs(torque_JLC[q_idx]) > 0.001:
+                    K[q_idx,q_idx] = max_trq[q_idx]/limit_range[q_idx]
+                else:
+                    K[q_idx,q_idx] = 0.001
+
+            w, v = scipy.linalg.eigh(a=K, b=M)
+            q_ = np.linalg.inv( np.matrix(v) )
+            k0_ = w
+
+            k0_sqrt = np.zeros( k0_.shape )
+            for q_idx in range( ndof ):
+                k0_sqrt[q_idx] = math.sqrt(k0_[q_idx])
+            tmpNN_ = np.diag(k0_sqrt)
+
+            D = 2.0 * q_.H * 0.7 * tmpNN_ * q_
+
+            torque_JLC_mx = -D * np.matrix(self.dq).transpose()
+            for q_idx in range( ndof ):
+                torque_JLC[q_idx] += torque_JLC_mx[q_idx, 0]
+
+            # calculate jacobian (the activation function)
+            J_JLC = np.matrix(numpy.zeros( (ndof, ndof) ))
+            for q_idx in range( ndof ):
                 if self.q[q_idx] < solver.lim_lower_soft[q_idx]:
-                    delta_V_JLC[q_idx] = self.q[q_idx] - solver.lim_lower_soft[q_idx]
                     J_JLC[q_idx,q_idx] = min(1.0, 10*abs(self.q[q_idx] - solver.lim_lower_soft[q_idx]) / abs(solver.lim_lower[q_idx] - solver.lim_lower_soft[q_idx]))
                 elif self.q[q_idx] > solver.lim_upper_soft[q_idx]:
-                    delta_V_JLC[q_idx] = self.q[q_idx] - solver.lim_upper_soft[q_idx]
                     J_JLC[q_idx,q_idx] = min(1.0, 10*abs(self.q[q_idx] - solver.lim_upper_soft[q_idx]) / abs(solver.lim_upper[q_idx] - solver.lim_upper_soft[q_idx]))
                 else:
-                    delta_V_JLC[q_idx] = 0.0
                     J_JLC[q_idx,q_idx] = 0.0
 
             J_JLC_inv = J_JLC.transpose()
 
-            N_JLC = np.matrix(np.identity(len(self.q))) - (J_JLC_inv * J_JLC)
-            N_JLC_inv = np.linalg.pinv(N_JLC)
+            N_JLC = np.matrix(np.identity( ndof )) - (J_JLC_inv * J_JLC)
 
-            v_max_JLC = 20.0/180.0*math.pi
-            kp_JLC = 10.0
-            dx_JLC_des = kp_JLC * delta_V_JLC
-
-            # min(1.0, v_max_JLC/np.linalg.norm(dx_JLC_des))
-            if v_max_JLC > np.linalg.norm(dx_JLC_des):
-                 vv_JLC = 1.0
-            else:
-                vv_JLC = v_max_JLC/np.linalg.norm(dx_JLC_des)
-            dx_JLC_ref = - vv_JLC * dx_JLC_des
+#            v_max_JLC = 20.0/180.0*math.pi
+#            kp_JLC = 10.0
+#            dx_JLC_des = kp_JLC * delta_V_JLC
+#            # min(1.0, v_max_JLC/np.linalg.norm(dx_JLC_des))
+#            if v_max_JLC > np.linalg.norm(dx_JLC_des):
+#                 vv_JLC = 1.0
+#            else:
+#                vv_JLC = v_max_JLC/np.linalg.norm(dx_JLC_des)
+#            dx_JLC_ref = - vv_JLC * dx_JLC_des
 
             J_r_HAND = solver.getJacobian('base', effector_name, self.q, base_end=False)
             J_r_HAND_inv = np.linalg.pinv(J_r_HAND)
@@ -474,8 +503,8 @@ class TestDynamicModel:
                                     link_collision_map[(link1_name, "base")].append( (p1_B, p2_B, dist, n1_B, n2_B) )
                             
 
-            torque_col = np.matrix(np.zeros( (len(self.q),1) ))
-            Ncol = np.matrix(np.identity(len(self.q)))
+            torque_col = np.matrix(np.zeros( (ndof,1) ))
+            Ncol = np.matrix(np.identity( ndof ))
             m_id = 0
             for link1_name, link2_name in link_collision_map:
                 for (p1_B, p2_B, dist, n1_B, n2_B) in link_collision_map[ (link1_name, link2_name) ]:
@@ -498,8 +527,8 @@ class TestDynamicModel:
 #                    m_id = self.pub_marker.publishVectorMarker(p1_L1, p1_L1+n1_L1*0.2, m_id, 0, 1, 0, frame=link1_name, namespace='default', scale=0.02)
 #                    m_id = self.pub_marker.publishVectorMarker(T_B_L2*p2_L2, T_B_L2*(p2_L2+n2_L2*0.2), m_id, 0, 0, 1, frame="base", namespace='default', scale=0.02)
 
-                    jac1 = PyKDL.Jacobian(len(self.q))
-                    jac2 = PyKDL.Jacobian(len(self.q))
+                    jac1 = PyKDL.Jacobian( ndof )
+                    jac2 = PyKDL.Jacobian( ndof )
                     common_link_name = solver.getJacobiansForPairX(jac1, jac2, link1_name, p1_L1, link2_name, p2_L2, self.q, None)
 
 #                    print link1_name, link2_name
@@ -523,9 +552,9 @@ class TestDynamicModel:
                     Jd2 = np.matrix([e2[0], e2[1], e2[2]])
 
                     # rewrite the linear part of the jacobian
-                    jac1_mx = np.matrix(np.zeros( (3, len(self.q)) ))
-                    jac2_mx = np.matrix(np.zeros( (3, len(self.q)) ))
-                    for q_idx in range(len(self.q)):
+                    jac1_mx = np.matrix(np.zeros( (3, ndof) ))
+                    jac2_mx = np.matrix(np.zeros( (3, ndof) ))
+                    for q_idx in range(ndof):
                         col1 = jac1.getColumn(q_idx)
                         col2 = jac2.getColumn(q_idx)
                         for row_idx in range(3):
@@ -535,8 +564,8 @@ class TestDynamicModel:
                     Jcol1 = Jd1 * jac1_mx
                     Jcol2 = Jd2 * jac2_mx
 
-                    Jcol = np.matrix(np.zeros( (1, len(self.q)) ))
-                    for q_idx in range(len(self.q)):
+                    Jcol = np.matrix(np.zeros( (1, ndof) ))
+                    for q_idx in range(ndof):
                         Jcol[0, q_idx] = Jcol1[0, q_idx] + Jcol2[0, q_idx]
 
                     activation = min(1.0, 2.0*depth/activation_dist)
@@ -547,7 +576,7 @@ class TestDynamicModel:
                     if rospy.is_shutdown():
                         exit(0)
 
-                    Ncol12 = np.matrix(np.identity(len(self.q))) - (Jcol.transpose() * a_des * Jcol)
+                    Ncol12 = np.matrix(np.identity(ndof)) - (Jcol.transpose() * a_des * Jcol)
                     Ncol = Ncol * Ncol12
 
                     # calculate relative velocity between points
@@ -557,6 +586,7 @@ class TestDynamicModel:
                     Mdij = Jcol * Minv * Jcol.transpose()
 
                     D = 2.0 * 0.7 * math.sqrt(Mdij * K)
+#                    d_omega = Jcol.transpose() * (-Frep)
                     d_omega = Jcol.transpose() * (-Frep - D * ddij)
                     torque_col += d_omega
 
@@ -569,12 +599,12 @@ class TestDynamicModel:
             J_r_HAND_prec_inv = np.linalg.pinv(J_r_HAND_prec)
 
 #            torque = J_JLC_inv * np.matrix(dx_JLC_ref).transpose() + N_JLC.transpose() * (torque_col + (Ncol.transpose() * J_r_HAND_inv) * np.matrix(dx_r_HAND_ref).transpose())
-            torque = J_JLC_inv * np.matrix(dx_JLC_ref).transpose() + N_JLC.transpose() * torque_col
+            torque = J_JLC_inv * np.matrix(torque_JLC).transpose() + N_JLC.transpose() * torque_col
 
             time_d = 0.01
             # simulate one step
             ddq = dyn_model.accel(self.q, self.dq, torque)
-            for q_idx in range(len(self.q)):
+            for q_idx in range(ndof):
                 self.dq[q_idx] += ddq[q_idx,0] * time_d
                 self.q[q_idx] += self.dq[q_idx] * time_d
 

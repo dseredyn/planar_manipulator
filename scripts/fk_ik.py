@@ -363,8 +363,8 @@ class FkIkSolver:
         q_idx = 0
         for joint_name in joint_names_vector:
             self.lim_lower[q_idx] = joint_limit_map[joint_name].lower
-            self.lim_lower_soft[q_idx] = self.lim_lower[q_idx] + 10.0/180.0*math.pi
+            self.lim_lower_soft[q_idx] = self.lim_lower[q_idx] + 15.0/180.0*math.pi
             self.lim_upper[q_idx] = joint_limit_map[joint_name].upper
-            self.lim_upper_soft[q_idx] = self.lim_upper[q_idx] - 10.0/180.0*math.pi
+            self.lim_upper_soft[q_idx] = self.lim_upper[q_idx] - 15.0/180.0*math.pi
             q_idx += 1
 
