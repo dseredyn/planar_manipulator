@@ -151,6 +151,12 @@ class DynModelPlanar5:
                         outMatrix[iRow,iCol] -= outMatrix[diagIndex,iCol]*tmpFactor
         return outMatrix
 
+    def computeM(self, q):
+        if type(q) == np.ndarray:
+            q = np.matrix(q).transpose()
+        self.M = self.inertia(q)
+        self.Minv = self.gaussjordan(self.M)
+
     # Planar5DOF_accel(double QDD[][5], const double* input1, const double* input2, const double* input3)
     def accel(self, q, dq, trq):
         if type(q) == np.ndarray:
@@ -161,14 +167,14 @@ class DynModelPlanar5:
             trq = np.matrix(trq).transpose()
 
         # call the computational routines
-        I = self.inertia(q)
-        Iinv = self.gaussjordan(I)
+        I = self.M
+        Iinv = self.Minv
         C = self.coriolis(q, dq);
          
         # fill temporary vector
         tmpTau = C * dq
         for iCol in range(5):
-            tmpTau[iCol,0] = trq[iCol,0] -  tmpTau[iCol,0]
+            tmpTau[iCol,0] = trq[iCol,0] -  tmpTau[iCol,0] - dq[iCol] * 0.2
 
         # compute acceleration
         QDD = Iinv * tmpTau

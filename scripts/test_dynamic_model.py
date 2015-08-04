@@ -181,79 +181,28 @@ class TestDynamicModel:
 
     def spin(self):
 
-        dyn_model = planar5.DynModelPlanar5()
-#        ddq = dyn_model.accel(np.zeros(5), np.array([0,0,0,0,0]), np.array([1,0,0,0,0]))
-#        print ddq
-#        exit(0)
-
         rospack = rospkg.RosPack()
 
-        model = "5dof"
-#        model = "6dof"
-#        model = "two_arms"
+        urdf_path=rospack.get_path('planar_manipulator_defs') + '/robots/planar_manipulator.urdf'
+        srdf_path=rospack.get_path('planar_manipulator_defs') + '/robots/planar_manipulator.srdf'
 
-        if model == "6dof":
-            urdf_path=rospack.get_path('planar_manipulator_defs') + '/robots/planar_manipulator_6dof.urdf'
-            srdf_path=rospack.get_path('planar_manipulator_defs') + '/robots/planar_manipulator_6dof.srdf'
-        elif model == "5dof":
-            urdf_path=rospack.get_path('planar_manipulator_defs') + '/robots/planar_manipulator.urdf'
-            srdf_path=rospack.get_path('planar_manipulator_defs') + '/robots/planar_manipulator.srdf'
-        elif model == "two_arms":
-            urdf_path=rospack.get_path('planar_manipulator_defs') + '/robots/planar_two_arms.urdf'
-            srdf_path=rospack.get_path('planar_manipulator_defs') + '/robots/planar_two_arms.srdf'
-
-        # TEST: line - line distance
-        if False:
-            while not rospy.is_shutdown():
-                pt = PyKDL.Vector(random.uniform(-1, 1), random.uniform(-1, 1), 0)
-                line = (PyKDL.Vector(random.uniform(-1, 1),random.uniform(-1, 1),0), PyKDL.Vector(random.uniform(-1, 1),random.uniform(-1, 1),0))
-                line2 = (PyKDL.Vector(random.uniform(-1, 1),random.uniform(-1, 1),0), PyKDL.Vector(random.uniform(-1, 1),random.uniform(-1, 1),0))
-                dist, p1, p2 = self.distanceLines(line, line2)
-
-                m_id = 0
-                m_id = self.pub_marker.publishVectorMarker(line[0], line[1], m_id, 0, 1, 0, frame='world', namespace='default', scale=0.02)
-                m_id = self.pub_marker.publishVectorMarker(line2[0], line2[1], m_id, 1, 0, 0, frame='world', namespace='default', scale=0.02)
-                m_id = self.pub_marker.publishVectorMarker(p1, p2, m_id, 1, 1, 1, frame='world', namespace='default', scale=0.02)
-                print line, line2, dist
-                raw_input(".")
-
-            exit(0)
-
-        # TEST: point - point distance
-        if False:
-            while not rospy.is_shutdown():
-                pt1 = PyKDL.Vector(random.uniform(-1, 1), random.uniform(-1, 1), 0)
-                pt2 = PyKDL.Vector(random.uniform(-1, 1), random.uniform(-1, 1), 0)
-                dist, p1, p2 = self.distancePoints(pt1, pt2)
-
-                m_id = 0
-                m_id = self.pub_marker.publishSinglePointMarker(p1, m_id, r=0, g=1, b=0, a=1, namespace='default', frame_id='world', m_type=Marker.SPHERE, scale=Vector3(0.1, 0.1, 0.1), T=None)
-                m_id = self.pub_marker.publishSinglePointMarker(p2, m_id, r=1, g=0, b=0, a=1, namespace='default', frame_id='world', m_type=Marker.SPHERE, scale=Vector3(0.1, 0.1, 0.1), T=None)
-                m_id = self.pub_marker.publishVectorMarker(p1, p2, m_id, 1, 0, 0, frame='world', namespace='default', scale=0.02)
-                print pt1, pt2, dist
-                raw_input(".")
-
-            exit(0)
+        dyn_model = planar5.DynModelPlanar5()
 
         col = collision_model.CollisionModel()
         col.readUrdfSrdf(urdf_path, srdf_path)
 
-        if model == "6dof":
-            self.joint_names = ["0_joint", "1_joint", "2_joint", "3_joint", "4_joint", "5_joint"]
-            effector_name = 'effector'
-        elif model == "5dof":
-            self.joint_names = ["0_joint", "1_joint", "2_joint", "3_joint", "4_joint"]
-            effector_name = 'effector'
-        elif model == "two_arms":
-            self.joint_names = ["torso_0_joint", "left_0_joint", "left_1_joint", "left_2_joint", "left_3_joint", "right_0_joint", "right_1_joint", "right_2_joint", "right_3_joint"]
-            effector_name = 'left_effector'
+        self.joint_names = ["0_joint", "1_joint", "2_joint", "3_joint", "4_joint"]
+        effector_name = 'effector'
 
         ndof = len(self.joint_names)
         # robot state
         self.q = np.zeros( ndof )
         self.dq = np.zeros( ndof )
-
-
+        self.q[0] = 0.2
+        self.q[1] = -0.1
+        self.q[2] = -0.1
+        self.q[3] = -0.1
+        self.q[4] = -0.1
 
         solver = fk_ik.FkIkSolver(self.joint_names, [], None)
 
@@ -287,19 +236,18 @@ class TestDynamicModel:
         max_trq = np.zeros( ndof )
         for q_idx in range( ndof ):
             limit_range[q_idx] = 15.0/180.0*math.pi
-            max_trq[q_idx] = 2.0
+            max_trq[q_idx] = 10.0
+
+        dyn_model.computeM(self.q)
 
         obst_offset = 0.0
         counter = 10000
         while not rospy.is_shutdown():
             obst_offset += 0.0001
-            obst[-1].T_L_O = PyKDL.Frame(PyKDL.Vector(1, -0.2+obst_offset, 0))
+            obst[-1].T_L_O = PyKDL.Frame(PyKDL.Vector(1, -0.2+math.sin(obst_offset), 0))
 
             if counter > 800:
-                if model == "two_arms":
-                    r_HAND_target = PyKDL.Frame(PyKDL.Rotation.RotZ(random.uniform(-math.pi, math.pi)), PyKDL.Vector(random.uniform(-1,0), random.uniform(0,1.8), 0))
-                else:
-                    r_HAND_target = PyKDL.Frame(PyKDL.Rotation.RotZ(random.uniform(-math.pi, math.pi)), PyKDL.Vector(random.uniform(0,2), random.uniform(-1,1), 0))
+                r_HAND_target = PyKDL.Frame(PyKDL.Rotation.RotZ(random.uniform(-math.pi, math.pi)), PyKDL.Vector(random.uniform(0,2), random.uniform(-1,1), 0))
 
                 qt = r_HAND_target.M.GetQuaternion()
                 pt = r_HAND_target.p
@@ -312,9 +260,16 @@ class TestDynamicModel:
 
             time_elapsed = rospy.Time.now() - last_time
 
-            M = dyn_model.inertia(np.matrix(self.q).transpose())
-            Minv = dyn_model.gaussjordan(M)
+            #
+            # mass matrix
+            #
+            dyn_model.computeM(self.q)
+            M = dyn_model.M
+            Minv = dyn_model.Minv
 
+            #
+            # JLC
+            #
             torque_JLC = np.zeros( ndof )
             K = np.zeros( (ndof, ndof) )
             for q_idx in range( ndof ):
@@ -325,6 +280,7 @@ class TestDynamicModel:
                     K[q_idx,q_idx] = 0.001
 
             w, v = scipy.linalg.eigh(a=K, b=M)
+#            q_ = dyn_model.gaussjordan(np.matrix(v))
             q_ = np.linalg.inv( np.matrix(v) )
             k0_ = w
 
@@ -348,52 +304,18 @@ class TestDynamicModel:
                     J_JLC[q_idx,q_idx] = min(1.0, 10*abs(self.q[q_idx] - solver.lim_upper_soft[q_idx]) / abs(solver.lim_upper[q_idx] - solver.lim_upper_soft[q_idx]))
                 else:
                     J_JLC[q_idx,q_idx] = 0.0
-
-            J_JLC_inv = J_JLC.transpose()
-
-            N_JLC = np.matrix(np.identity( ndof )) - (J_JLC_inv * J_JLC)
-
-#            v_max_JLC = 20.0/180.0*math.pi
-#            kp_JLC = 10.0
-#            dx_JLC_des = kp_JLC * delta_V_JLC
-#            # min(1.0, v_max_JLC/np.linalg.norm(dx_JLC_des))
-#            if v_max_JLC > np.linalg.norm(dx_JLC_des):
-#                 vv_JLC = 1.0
-#            else:
-#                vv_JLC = v_max_JLC/np.linalg.norm(dx_JLC_des)
-#            dx_JLC_ref = - vv_JLC * dx_JLC_des
-
-            J_r_HAND = solver.getJacobian('base', effector_name, self.q, base_end=False)
-            J_r_HAND_inv = np.linalg.pinv(J_r_HAND)
-            T_B_E = solver.calculateFk('base', effector_name, self.q)
-            r_HAND_current = T_B_E
-            r_HAND_diff = PyKDL.diff(r_HAND_current, r_HAND_target)
-
-            delta_V_HAND = np.empty(6)
-            delta_V_HAND[0] = r_HAND_diff.vel[0]
-            delta_V_HAND[1] = r_HAND_diff.vel[1]
-            delta_V_HAND[2] = r_HAND_diff.vel[2]
-            delta_V_HAND[3] = r_HAND_diff.rot[0]
-            delta_V_HAND[4] = r_HAND_diff.rot[1]
-            delta_V_HAND[5] = r_HAND_diff.rot[2]
-
-            v_max_HAND = 4.0
-            kp_HAND = 10.0
-            dx_HAND_des = kp_HAND * delta_V_HAND
-            if v_max_HAND > np.linalg.norm(dx_HAND_des):
-                vv_HAND = 1.0
-            else:
-                vv_HAND = v_max_HAND/np.linalg.norm(dx_HAND_des)
-            dx_r_HAND_ref = vv_HAND * dx_HAND_des
+            N_JLC = np.matrix(np.identity( ndof )) - (J_JLC.transpose() * J_JLC)
 
             links_fk = {}
             for link in col.links:
                 links_fk[link.name] = solver.calculateFk('base', link.name, self.q)
 
-            activation_dist = 0.05
-
+            #
+            # collision constraints
+            #
             link_collision_map = {}
             if True:
+                activation_dist = 0.05
                 # self collision
                 total_contacts = 0
                 for link1_name, link2_name in col.collision_pairs:
@@ -440,7 +362,6 @@ class TestDynamicModel:
                                 exit(0)
 
                             if dist != None:
-#                                print "dist", dist, link1_name, link2_name, col1.type, col2.type
                                 dist -= col1.radius + col2.radius
                                 v = p2_B - p1_B
                                 v.Normalize()
@@ -480,7 +401,6 @@ class TestDynamicModel:
                                 dist, p1_B, p2_B = self.distancePointLine(pt, line)
                             elif col1.type == "sphere" and col2.type == "sphere":
                                 dist, p1_B, p2_B = self.distancePoints(T_B_C1 * PyKDL.Vector(), T_B_C2 * PyKDL.Vector())
-#                                print "a:",dist, p1_B, p2_B
                             else:
                                 print "ERROR: unknown collision type:", col1.type, col2.type
                                 exit(0)
@@ -493,9 +413,6 @@ class TestDynamicModel:
                                 n2_B = -v
                                 p1_B += n1_B * col1.radius
                                 p2_B += n2_B * col2.radius
-
-#                                if col1.type == "sphere" and col2.type == "sphere":
-#                                    print "b:",dist, p1_B, p2_B
 
                                 if dist < activation_dist:
                                     if not (link1_name, "base") in link_collision_map:
@@ -536,7 +453,7 @@ class TestDynamicModel:
                     depth = (activation_dist - dist)
 
                     # repulsive force
-                    Fmax = 2.0
+                    Fmax = 20.0
                     if dist <= activation_dist:
                         f = (dist - activation_dist) / activation_dist
                     else:
@@ -568,7 +485,13 @@ class TestDynamicModel:
                     for q_idx in range(ndof):
                         Jcol[0, q_idx] = Jcol1[0, q_idx] + Jcol2[0, q_idx]
 
-                    activation = min(1.0, 2.0*depth/activation_dist)
+                    # calculate relative velocity between points
+                    ddij = Jcol * np.matrix(self.dq).transpose()
+
+                    activation = min(1.0, 5.0*depth/activation_dist)
+                    activation = max(0.0, activation)
+                    if ddij <= 0.0:
+                        activation = 0.0
                     a_des = activation
 
 #                    print "activation", activation
@@ -579,27 +502,76 @@ class TestDynamicModel:
                     Ncol12 = np.matrix(np.identity(ndof)) - (Jcol.transpose() * a_des * Jcol)
                     Ncol = Ncol * Ncol12
 
-                    # calculate relative velocity between points
-                    ddij = Jcol * np.matrix(self.dq).transpose()
-
                     # calculate collision mass
                     Mdij = Jcol * Minv * Jcol.transpose()
 
                     D = 2.0 * 0.7 * math.sqrt(Mdij * K)
-#                    d_omega = Jcol.transpose() * (-Frep)
-                    d_omega = Jcol.transpose() * (-Frep - D * ddij)
-                    torque_col += d_omega
+                    d_torque = Jcol.transpose() * (-Frep - D * ddij)
+                    torque_col += d_torque
 
             self.pub_marker.eraseMarkers(m_id, 10, frame_id='base', namespace='default')
 
+            #
+            # end-effector task
+            #
+            T_B_E = solver.calculateFk('base', effector_name, self.q)
+            r_HAND_current = T_B_E
+            diff = PyKDL.diff(r_HAND_current, r_HAND_target)
+            r_HAND_diff = np.array( [diff[0], diff[1], diff[5]] )
 
-            Ncol_inv = np.linalg.pinv(Ncol)
+            Kc = np.array( [10, 10, 1] )
+            Dxi = np.array( [0.7, 0.7, 0.7] )
+            wrench = np.zeros( 3 )
+            for dim in range(3):
+                wrench[dim] = Kc[dim] * r_HAND_diff[dim]
 
-            J_r_HAND_prec = J_r_HAND * (Ncol * N_JLC)
-            J_r_HAND_prec_inv = np.linalg.pinv(J_r_HAND_prec)
+            J_r_HAND_6 = solver.getJacobian('base', effector_name, self.q, base_end=False)
 
-#            torque = J_JLC_inv * np.matrix(dx_JLC_ref).transpose() + N_JLC.transpose() * (torque_col + (Ncol.transpose() * J_r_HAND_inv) * np.matrix(dx_r_HAND_ref).transpose())
-            torque = J_JLC_inv * np.matrix(torque_JLC).transpose() + N_JLC.transpose() * torque_col
+            J_r_HAND = np.matrix( np.zeros( (3,5) ) )
+            for q_idx in range( ndof ):
+                J_r_HAND[0, q_idx] = J_r_HAND_6[0, q_idx]
+                J_r_HAND[1, q_idx] = J_r_HAND_6[1, q_idx]
+                J_r_HAND[2, q_idx] = J_r_HAND_6[5, q_idx]
+
+            torque_HAND = J_r_HAND.transpose() * np.matrix(wrench).transpose()
+
+            A = J_r_HAND * Minv * J_r_HAND.transpose()
+
+#            A = dyn_model.gaussjordan(A)
+            A = np.linalg.inv(A)
+
+            tmpKK_ = np.matrix(np.diag(Kc))
+
+            w, v = scipy.linalg.eigh(a=tmpKK_, b=A)
+#            Q = dyn_model.gaussjordan(np.matrix(v))
+            Q = np.linalg.inv( np.matrix(v) )
+            K0 = w
+
+            Dc = Q.transpose() * np.matrix( np.diag(Dxi) )
+
+            K0_sqrt = np.zeros( K0.shape )
+            for dim_idx in range( 3 ):
+                K0_sqrt[dim_idx] = math.sqrt(K0[dim_idx])
+            Dc = 2.0 * Dc *  np.matrix( np.diag(K0_sqrt) ) * Q
+
+            F = Dc * J_r_HAND * np.matrix(self.dq).transpose()
+            torque_HAND_mx = -J_r_HAND.transpose() * F
+            for q_idx in range( ndof ):
+                torque_HAND[q_idx] += torque_HAND_mx[q_idx, 0]
+
+            # null-space
+#    tmpNK_.noalias() = J * Mi;
+#    tmpKK_.noalias() = tmpNK_ * JT;
+#    luKK_.compute(tmpKK_);
+#    tmpKK_ = luKK_.inverse();
+#    tmpKN_.noalias() = Mi * JT;
+#    Ji.noalias() = tmpKN_ * tmpKK_;
+#
+#    P.noalias() = Eigen::MatrixXd::Identity(P.rows(), P.cols());
+#    P.noalias() -=  J.transpose() * A * J * Mi;
+
+            torque = np.matrix(torque_JLC).transpose() + N_JLC.transpose() * (torque_col + (Ncol.transpose() * torque_HAND))
+#            torque = torque_HAND
 
             time_d = 0.01
             # simulate one step
@@ -608,10 +580,7 @@ class TestDynamicModel:
                 self.dq[q_idx] += ddq[q_idx,0] * time_d
                 self.q[q_idx] += self.dq[q_idx] * time_d
 
-
-            
             if time_elapsed.to_sec() > 0.05:
-#                print self.q
                 m_id = 0
                 m_id = self.publishRobotModelVis(m_id, col, links_fk)
                 m_id = self.publishObstaclesVis(m_id, obst)
