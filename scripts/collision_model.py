@@ -26,11 +26,6 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import PyKDL
-#import numpy as np
-
-#import urdf_parser_py
-#from urdf_parser_py.urdf import URDF
-#import pykdl_utils.kdl_parser as kdl_urdf
 import xml.etree.ElementTree as ET
 
 class CollisionModel:
@@ -46,15 +41,6 @@ class CollisionModel:
         def __init__(self):
             self.name = None
             self.col = None
-
-#    def readSrdf(self, filename):
-#        # read the srdf file
-#        tree = ET.parse(filename)
-#        root = tree.getroot()
-#        self.disabled_collision_pairs = []
-#        for child in root:
-#            if child.tag == "disable_collisions":
-#                self.disabled_collision_pairs.append( (child.attrib["link1"], child.attrib["link2"]) )
 
     def readUrdfSrdf(self, urdf_filename, srdf_filename):
         def parseGeometryCollision2Element(col, geometry_elem):
@@ -84,7 +70,7 @@ class CollisionModel:
             link = CollisionModel.Link()
             link.name = link_elem.attrib["name"]
             for child in link_elem:
-                if child.tag == "collision2":
+                if child.tag == "self_collision_checking":
                     col = parseCollision2Element(link, child)
                     if link.col == None:
                         link.col = []

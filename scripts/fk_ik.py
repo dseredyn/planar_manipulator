@@ -35,7 +35,6 @@ import pykdl_utils.kdl_parser as kdl_urdf
 
 class FkIkSolver:
 
-    # this hack is for fixed torso_1_joint
     def kdl_tree_from_urdf_model(self, urdf, js_inactive_names_vector, js_pos):
         segment_map = {}
         segment_id = 0
@@ -101,103 +100,18 @@ class FkIkSolver:
                 if joint_name == seg.getJoint().getName():
                     self.inactive_segment_id_q_id_map[seg_id] = q_idx
 
-#    def createJacobianFkSolvers(self, base_name, end_name, joint_names_vector):
-#        if not hasattr(self, 'jac_solver_chain_map'):
-#            self.jac_solver_chain_map = {}
-#            self.jac_solver_map = {}
-#            self.jac_solver_names_map = {}
-#            self.jac_solver_q_indices_map = {}
-#            self.jac_solver_chain_len_map = {}
-#            self.fk_solver_map = {}
-#        if not (base_name, end_name) in self.jac_solver_chain_map:
-#            chain = self.tree.getChain(base_name, end_name)
-#            self.jac_solver_chain_map[(base_name, end_name)] = chain
-#            self.jac_solver_map[(base_name, end_name)] = PyKDL.ChainJntToJacSolver( chain )
-#            self.jac_solver_names_map[(base_name, end_name)] = joint_names_vector
-#            self.jac_solver_q_indices_map[(base_name, end_name)] = []
-#            self.fk_solver_map[(base_name, end_name)] = PyKDL.ChainFkSolverPos_recursive(chain)
-#            for chain_q_idx in range(chain.getNrOfSegments()):
-#                joint = chain.getSegment(chain_q_idx).getJoint()
-#                chain_joint_name = joint.getName()
-#                chain_joint_type = joint.getType()
-#                if chain_joint_type == PyKDL.Joint.None:
-#                    continue
-#                print "chain", chain_joint_name, chain_joint_type
-#                q_idx = 0
-#                for joint_name in joint_names_vector:
-#                    if joint_name == chain_joint_name:
-#                        self.jac_solver_q_indices_map[(base_name, end_name)].append(q_idx)
-#                        break
-#                    q_idx += 1
-#                if q_idx == len(joint_names_vector):
-#                    print "ERROR: createJacobianSolver", chain_joint_name, " not in", joint_names_vector
-#                    exit(0)
-#            self.jac_solver_chain_len_map[(base_name, end_name)] = len(self.jac_solver_q_indices_map[(base_name, end_name)])
-#            print "joints in the chain:", self.jac_solver_chain_len_map[(base_name, end_name)]
-#        else:
-#            print "ERROR: createJacobianSolver: solver already exists"
-#            exit(0)
-
-#    def isParentRec(self, parent_idx, child_idx):
-#        if child_idx == None:
-#            return False
-#        if child_idx == parent_idx:
-#            return True
-#        return self.isParentRec(parent_idx, self.segment_parent_map[child_idx])
-#
-#    def isParent(self, parent_name, child_name):
-#        parent_idx = self.segment_name_id_map[parent_name]
-#        child_idx = self.segment_name_id_map[child_name]
-#        return self.isParentRec( parent_idx, child_idx)
-#
-#    def getChain(self, link_idx):
-#        chain = []
-#        while link_idx != None:
-#            chain.append(link_idx)
-#            link_idx = self.segment_parent_map[link_idx]
-#        return chain
-#
-#    def getAffectedDof(self, link1_name, link2_name):
-#        link1_idx = self.segment_name_id_map[link1_name]
-#        link2_idx = self.segment_name_id_map[link2_name]
-#        ch1 = self.getChain(link1_idx)
-#        ch2 = self.getChain(link2_idx)
-#        ch1.reverse()
-#        ch2.reverse()
-#
-#        last_common_link_idx = None
-#        for ch_idx in range(min(len(ch1), len(ch2))):
-#            if ch1[ch_idx] != ch2[ch_idx]:
-#                break
-#            last_common_link_idx = ch1[ch_idx]
-#
-#        ch1.reverse()
-#        ch2.reverse()
-#
-#        affected_dofs = []
-#        for l_idx in ch1:
-#            if l_idx == last_common_link_idx:
-#                break
-#            if l_idx in self.segment_id_q_id_map:
-#                dof_idx = self.segment_id_q_id_map[l_idx]
-#                if not dof_idx in affected_dofs:
-#                    affected_dofs.append(dof_idx)
-#        return affected_dofs
-
     class FkSolver:
         def __init__(self, tree, base_name, end_name, joint_names_vector):
             self.chain = tree.getChain(base_name, end_name)
-            self.jac_solver = PyKDL.ChainJntToJacSolver( self.chain )    #  self.jac_solver_map[(base_name, end_name)]
-#            self.jac_solver_names_map[(base_name, end_name)] = joint_names_vector
-            self.q_indices_map = []  #  self.jac_solver_q_indices_map[(base_name, end_name)]
-            self.fk_solver = PyKDL.ChainFkSolverPos_recursive(self.chain)   # self.fk_solver_map[(base_name, end_name)]
+            self.jac_solver = PyKDL.ChainJntToJacSolver( self.chain )
+            self.q_indices_map = []
+            self.fk_solver = PyKDL.ChainFkSolverPos_recursive(self.chain)
             for chain_q_idx in range(self.chain.getNrOfSegments()):
                 joint = self.chain.getSegment(chain_q_idx).getJoint()
                 chain_joint_name = joint.getName()
                 chain_joint_type = joint.getType()
                 if chain_joint_type == PyKDL.Joint.None:
                     continue
-#                print "chain", chain_joint_name, chain_joint_type
                 q_idx = 0
                 for joint_name in joint_names_vector:
                     if joint_name == chain_joint_name:
@@ -207,7 +121,7 @@ class FkIkSolver:
                 if q_idx == len(joint_names_vector):
                     print "ERROR: createJacobianSolver", chain_joint_name, " not in", joint_names_vector
                     exit(0)
-            self.chain_length = len(self.q_indices_map)  # self.jac_solver_chain_len_map[(base_name, end_name)]
+            self.chain_length = len(self.q_indices_map)
 
     def calculateFk(self, base_name, end_name, q):
         if not (base_name, end_name) in self.fk_solvers:
@@ -224,7 +138,7 @@ class FkIkSolver:
         fk_solver.fk_solver.JntToCart(q_fk, fr)
         return fr
 
-    def getJacobian(self, base_name, end_name, q, base_end=False):
+    def getJacobian(self, base_name, end_name, q):
         if not (base_name, end_name) in self.fk_solvers:
             self.fk_solvers[(base_name, end_name)] = FkIkSolver.FkSolver(self.tree, base_name, end_name, self.joint_names_vector)
 
@@ -238,13 +152,6 @@ class FkIkSolver:
             q_jac_idx += 1
         jac_small = PyKDL.Jacobian( fk_solver.chain.getNrOfJoints() )
         fk_solver.jac_solver.JntToJac(q_jac, jac_small)
-
-        if base_end:
-            T = PyKDL.Frame()
-            fk_solver.fk_solver.JntToCart(q_jac, T)
-#            T = self.calculateFk(base_name, end_name, q)
-#            jac_small.changeRefFrame(T.Inverse())
-            jac_small.changeBase(T.M.Inverse())
 
         # create the jacobian for all joints
         jac_big = np.matrix(np.zeros( (6, len(q)) ))
@@ -334,7 +241,6 @@ class FkIkSolver:
                 return None
 
         common_link_name = self.segment_id_name_map[l_index]
-#        print "common_link_name", common_link_name
         self.getJacobianForX(jac1, link_name1, x1, q, iq, base_name=common_link_name)
         self.getJacobianForX(jac2, link_name2, x2, q, iq, base_name=common_link_name)
         return common_link_name

@@ -525,7 +525,7 @@ class TestDynamicModel:
             for dim in range(3):
                 wrench[dim] = Kc[dim] * r_HAND_diff[dim]
 
-            J_r_HAND_6 = solver.getJacobian('base', effector_name, self.q, base_end=False)
+            J_r_HAND_6 = solver.getJacobian('base', effector_name, self.q)
 
             J_r_HAND = np.matrix( np.zeros( (3,5) ) )
             for q_idx in range( ndof ):

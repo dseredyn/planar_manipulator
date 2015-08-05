@@ -11,9 +11,11 @@
 
   <buildtool_depend>catkin</buildtool_depend>
 
-  <build_depend>ompl</build_depend>
-  <build_depend>openrave</build_depend>
-  <build_depend>openrave_catkin</build_depend>
+  <build_depend>rtt</build_depend>
+  <build_depend>ocl</build_depend>
+  <build_depend>rtt_ros</build_depend>
+  <build_depend>rtt_rosclock</build_depend>
+  <build_depend>self_collision</build_depend>
 
   <run_depend>ompl</run_depend>
   <run_depend>openrave</run_depend>
@@ -34,5 +36,6 @@
   <run_depend>velma_common</run_depend> 
   <run_depend>velma_openrave</run_depend> 
   <run_depend>state_server_msgs</run_depend>
+  <run_depend>self_collision</run_depend>
 
 </package>
