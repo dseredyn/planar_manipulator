@@ -381,6 +381,7 @@ public:
 	    col_model->parseSRDF(robot_semantic_description_str);
         col_model->generateCollisionPairs();
 
+        // external collision objects - part of virtual link connected to the base link
         self_collision::Link::VecPtrCollision col_array;
         boost::shared_ptr< self_collision::Collision > pcol(new self_collision::Collision());
         pcol->geometry.reset(new self_collision::Capsule());
@@ -395,6 +396,9 @@ public:
         }
         col_model->generateCollisionPairs();
 
+        //
+        // robot state
+        //
         std::vector<std::string > joint_names;
         joint_names.push_back("0_joint");
         joint_names.push_back("1_joint");
@@ -402,29 +406,8 @@ public:
         joint_names.push_back("3_joint");
         joint_names.push_back("4_joint");
 
-        std::string effector_name = "effector";
-        int effector_idx = 0;
-        for (int l_idx = 0; l_idx < col_model->link_count_; l_idx++) {
-            if (col_model->links_[l_idx]->name == effector_name) {
-                effector_idx = l_idx;
-                break;
-            }
-        }
-
         int ndof = joint_names.size();
 
-        //
-        // kinematics model
-        //
-        KinematicModel kin_model(robot_description_str, joint_names);
-
-        KinematicModel::Jacobian J_r_HAND_6, J_r_HAND;
-        J_r_HAND_6.resize(6, ndof);
-        J_r_HAND.resize(3, ndof);
-
-        //
-        // robot state
-        //
         Eigen::VectorXd q, dq, ddq, torque;
         q.resize( ndof );
         dq.resize( ndof );
@@ -437,12 +420,28 @@ public:
             torque[q_idx] = 0.0;
         }
 
-        dyn_model.accel(ddq, q, dq, torque);
+        std::string effector_name = "effector";
+        int effector_idx = 0;
+        for (int l_idx = 0; l_idx < col_model->link_count_; l_idx++) {
+            if (col_model->links_[l_idx]->name == effector_name) {
+                effector_idx = l_idx;
+                break;
+            }
+        }
+
+        //
+        // kinematic model
+        //
+        KinematicModel kin_model(robot_description_str, joint_names);
+
+        KinematicModel::Jacobian J_r_HAND_6, J_r_HAND;
+        J_r_HAND_6.resize(6, ndof);
+        J_r_HAND.resize(3, ndof);
 
         std::vector<KDL::Frame > links_fk(col_model->link_count_);
 
+        // joint limits
         Eigen::VectorXd lower_limit(ndof), upper_limit(ndof), limit_range(ndof), max_trq(ndof);
-
         int q_idx = 0;
         for (std::vector<std::string >::const_iterator name_it = joint_names.begin(); name_it != joint_names.end(); name_it++, q_idx++) {
             for (std::vector<self_collision::Joint>::const_iterator j_it = col_model->joints_.begin(); j_it != col_model->joints_.end(); j_it++) {
@@ -456,6 +455,9 @@ public:
             max_trq[q_idx] = 10.0;
         }
 
+        //
+        // Tasks declaration
+        //
         Task_JLC task_JLC(lower_limit, upper_limit, limit_range, max_trq);
         Task_HAND task_HAND(ndof, 3);
 
@@ -500,10 +502,6 @@ public:
                 boost::shared_ptr<self_collision::Link> link2 = col_model->links_[link2_idx];
                 KDL::Frame T_B_L1 = links_fk[link1_idx];
                 KDL::Frame T_B_L2 = links_fk[link2_idx];
-
-//                for (self_collision::Link::VecPtrCollision::const_iterator col1 = link1->collision_array.begin(); col1 != link1->collision_array.end(); col1++) {
-  //                  std::cout << link1->name << " " << (*col1)->geometry
-    //            }
 
                 for (self_collision::Link::VecPtrCollision::const_iterator col1 = link1->collision_array.begin(); col1 != link1->collision_array.end(); col1++) {
                     for (self_collision::Link::VecPtrCollision::const_iterator col2 = link2->collision_array.begin(); col2 != link2->collision_array.end(); col2++) {
@@ -591,50 +589,6 @@ public:
                     }
                 }
             }
-/*                # environment collisions
-                for link in col.links:
-                    if link.col == None:
-                        continue
-                    link1_name = link.name
-                    T_B_L1 = links_fk[link1_name]
-                    T_B_L2 = links_fk["base"]
-                    for col1 in link.col:
-                        for col2 in obst:
-                            T_B_C1 = T_B_L1 * col1.T_L_O
-                            T_B_C2 = T_B_L2 * col2.T_L_O
-                            dist = None
-                            if col1.type == "capsule" and col2.type == "capsule":
-                                line1 = (T_B_C1 * PyKDL.Vector(0, -col1.length/2, 0), T_B_C1 * PyKDL.Vector(0, col1.length/2, 0))
-                                line2 = (T_B_C2 * PyKDL.Vector(0, -col2.length/2, 0), T_B_C2 * PyKDL.Vector(0, col2.length/2, 0))
-                                dist, p1_B, p2_B = self.distanceLines(line1, line2)
-                            elif col1.type == "capsule" and col2.type == "sphere":
-                                line = (T_B_C1 * PyKDL.Vector(0, -col1.length/2, 0), T_B_C1 * PyKDL.Vector(0, col1.length/2, 0))
-                                pt = T_B_C2 * PyKDL.Vector()
-                                dist, p1_B, p2_B = self.distanceLinePoint(line, pt)
-                            elif col1.type == "sphere" and col2.type == "capsule":
-                                pt = T_B_C1 * PyKDL.Vector()
-                                line = (T_B_C2 * PyKDL.Vector(0, -col2.length/2, 0), T_B_C2 * PyKDL.Vector(0, col2.length/2, 0))
-                                dist, p1_B, p2_B = self.distancePointLine(pt, line)
-                            elif col1.type == "sphere" and col2.type == "sphere":
-                                dist, p1_B, p2_B = self.distancePoints(T_B_C1 * PyKDL.Vector(), T_B_C2 * PyKDL.Vector())
-                            else:
-                                print "ERROR: unknown collision type:", col1.type, col2.type
-                                exit(0)
-
-                            if dist != None:
-                                dist -= col1.radius + col2.radius
-                                v = p2_B - p1_B
-                                v.Normalize()
-                                n1_B = v
-                                n2_B = -v
-                                p1_B += n1_B * col1.radius
-                                p2_B += n2_B * col2.radius
-
-                                if dist < activation_dist:
-                                    if not (link1_name, "base") in link_collision_map:
-                                        link_collision_map[(link1_name, "base")] = []
-                                    link_collision_map[(link1_name, "base")].append( (p1_B, p2_B, dist, n1_B, n2_B) )
-*/
 
             Eigen::VectorXd torque_COL(ndof);
             for (int q_idx = 0; q_idx < ndof; q_idx++) {
@@ -786,7 +740,7 @@ public:
                 ros::Time last_time = ros::Time::now();
             }
             ros::spinOnce();
-            loop_rate.sleep();
+//            loop_rate.sleep();
         }
 
     }
