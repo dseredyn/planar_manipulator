@@ -55,6 +55,162 @@
 #define UNRESTRICT_ALLOC
 #endif
 
+class Task_HAND {
+public:
+    Task_HAND(int ndof, int dim) :
+        ndof_(ndof),
+        dim_(dim),
+        wrench_(dim),
+        JT(ndof_, dim_),
+        tmpNK_(ndof_, dim_),
+        A(dim_, dim_),
+        Q(dim_, dim_),
+        tmpKK_(dim_, dim_),
+        tmpKK2_(dim_, dim_),
+        Dc(dim_, dim_),
+        K0(dim_),
+        tmpK_(dim_),
+        wrench_tmp(dim_)
+    {
+    }
+
+    ~Task_HAND() {
+    }
+
+    void compute(const Eigen::VectorXd &T_diff, const Eigen::VectorXd &Kc, const Eigen::VectorXd &Dxi, const Eigen::MatrixXd &J, const Eigen::VectorXd &dq, const Eigen::MatrixXd &invI,
+                    Eigen::VectorXd &torque)
+    {
+            for (int dim_idx = 0; dim_idx < dim_; dim_idx++) {
+                wrench_[dim_idx] = Kc[dim_idx] * T_diff[dim_idx];
+            }
+            torque = J.transpose() * wrench_;
+
+            // code form cartesian_impedance.h
+            JT = J.transpose();
+            tmpNK_.noalias() = J * invI;
+            A.noalias() = tmpNK_ * JT;
+            luKK_.compute(A);
+            A = luKK_.inverse();
+
+            tmpKK_ = Kc.asDiagonal();
+            UNRESTRICT_ALLOC;
+            es_.compute(tmpKK_, A);
+            RESTRICT_ALLOC;
+            K0 = es_.eigenvalues();
+            luKK_.compute(es_.eigenvectors());
+            Q = luKK_.inverse();
+
+            tmpKK_ = Dxi.asDiagonal();
+            Dc.noalias() = Q.transpose() * tmpKK_;
+            tmpKK_ = K0.cwiseSqrt().asDiagonal();
+            tmpKK2_.noalias() = Dc *  tmpKK_;
+            Dc.noalias() = tmpKK2_ * Q;
+            tmpK_.noalias() = J * dq;
+            // TODO: check if 2.0* is ok
+            wrench_tmp.noalias() = 2.0 * Dc * tmpK_;
+            torque.noalias() -= JT * wrench_tmp;
+    }
+
+protected:
+    int ndof_, dim_;
+    Eigen::VectorXd wrench_;
+    Eigen::MatrixXd JT;
+    Eigen::MatrixXd tmpNK_;
+    Eigen::MatrixXd A;
+    Eigen::PartialPivLU<Eigen::MatrixXd> luKK_;
+    Eigen::GeneralizedSelfAdjointEigenSolver<Eigen::MatrixXd> es_;
+    Eigen::MatrixXd Q;
+    Eigen::MatrixXd tmpKK_;
+    Eigen::MatrixXd tmpKK2_;
+    Eigen::MatrixXd Dc;
+    Eigen::VectorXd K0;
+    Eigen::VectorXd tmpK_;
+    Eigen::VectorXd wrench_tmp;
+};
+
+class Task_JLC {
+public:
+    Task_JLC(const Eigen::VectorXd &lower_limit, const Eigen::VectorXd &upper_limit, const Eigen::VectorXd &limit_range, const Eigen::VectorXd &max_trq) :
+        q_length_(lower_limit.innerSize()),
+        lower_limit_(lower_limit),
+        upper_limit_(upper_limit),
+        limit_range_(limit_range),
+        max_trq_(max_trq),
+        activation_JLC_(q_length_),
+        k_(q_length_),
+        k0_(q_length_),
+        q_(q_length_, q_length_), d_(q_length_, q_length_),
+        J_JLC_(q_length_, q_length_),
+        tmpNN_(q_length_, q_length_)
+    {
+    }
+
+    ~Task_JLC() {
+    }
+
+    double jointLimitTrq(double hl, double ll, double ls,
+        double r_max, double q, double &out_limit_activation) {
+        if (q > (hl - ls)) {
+            out_limit_activation = fabs((q - hl + ls) / ls);
+            return -1 * ((q - hl + ls) / ls) * ((q - hl + ls) / ls) * r_max;
+        } else if (q < (ll + ls)) {
+            out_limit_activation = fabs((ll + ls - q) / ls);
+            return ((ll + ls - q) / ls) * ((ll + ls - q) / ls) * r_max;
+        } else {
+            out_limit_activation = 0.0;
+            return 0.0;
+        }
+    }
+
+    void compute(const Eigen::VectorXd &q, const Eigen::VectorXd &dq, const Eigen::MatrixXd &I, Eigen::VectorXd &torque, Eigen::MatrixXd &N) {
+            // code from joint_limit_avoidance.cpp
+            for (int q_idx = 0; q_idx < q_length_; q_idx++) {
+                torque(q_idx) = jointLimitTrq(upper_limit_[q_idx],
+                                           lower_limit_[q_idx], limit_range_[q_idx], max_trq_[q_idx],
+                                           q[q_idx], activation_JLC_[q_idx]);
+                activation_JLC_[q_idx] *= 10.0;
+                if (activation_JLC_[q_idx] > 1.0) {
+                    activation_JLC_[q_idx] = 1.0;
+                }
+
+                if (fabs(torque(q_idx)) > 0.001) {
+                    k_(q_idx) = max_trq_[q_idx]/limit_range_[q_idx];
+                } else {
+                    k_(q_idx) = 0.001;
+                }
+            }
+
+            tmpNN_ = k_.asDiagonal();
+            es_.compute(tmpNN_, I);
+            q_ = es_.eigenvectors().inverse();
+            k0_ = es_.eigenvalues();
+
+            tmpNN_ = k0_.cwiseSqrt().asDiagonal();
+
+            d_.noalias() = 2.0 * q_.adjoint() * 0.7 * tmpNN_ * q_;
+
+            torque.noalias() -= d_ * dq;
+
+            // calculate jacobian (the activation function)
+            J_JLC_ = activation_JLC_.asDiagonal();
+            N = Eigen::MatrixXd::Identity(q_length_, q_length_) - (J_JLC_.transpose() * J_JLC_);
+    }
+
+protected:
+    int q_length_;
+    Eigen::VectorXd lower_limit_;
+    Eigen::VectorXd upper_limit_;
+    Eigen::VectorXd limit_range_;
+    Eigen::VectorXd max_trq_;
+    Eigen::VectorXd activation_JLC_;
+    Eigen::VectorXd k_;
+    Eigen::VectorXd k0_;
+    Eigen::MatrixXd q_, d_;
+    Eigen::MatrixXd J_JLC_;
+    Eigen::MatrixXd tmpNN_;
+    Eigen::GeneralizedSelfAdjointEigenSolver<Eigen::MatrixXd> es_;
+};
+
 class CollisionInfo {
 public:
     int link1_idx;
@@ -102,13 +258,11 @@ public:
         double tpt = KDL::dot(v, pt);
         if (tpt <= ta) {
             distance = (lineA-pt).Norm();
-//            std::cout << "distanceLinePoint 1 " << distance << std::endl;
             p_pt1 = lineA;
             p_pt2 = pt;
         }
         else if (tpt >= tb) {
             distance = (lineB-pt).Norm();
-//            std::cout << "distanceLinePoint 2 " << distance << std::endl;
             p_pt1 = lineB;
             p_pt2 = pt;
         }
@@ -117,7 +271,6 @@ public:
             n.Normalize();
             double diff = KDL::dot(n, lineA) - KDL::dot(n, pt);
             distance = fabs(diff);
-//            std::cout << "distanceLinePoint 3 " << distance << std::endl;
             p_pt1 = pt + (diff * n);
             p_pt2 = pt;
         }
@@ -132,7 +285,6 @@ public:
         double y1 = l1A.y(), y2 = l1B.y(), y3 = l2A.y(), y4 = l2B.y();
         double denom = (x1-x2)*(y3-y4)-(y1-y2)*(x3-x4);
         // check if the lines cross
-        //if (fabs(denom) > 0.00000001) {
         if (denom != 0.0) {
             double xi = ((x1*y2-y1*x2)*(x3-x4)-(x1-x2)*(x3*y4-y3*x4)) / denom;
             double yi = ((x1*y2-y1*x2)*(y3-y4)-(y1-y2)*(x3*y4-y3*x4)) / denom;
@@ -143,7 +295,6 @@ public:
                 distance = 0.0;
                 p_pt1 = KDL::Vector(xi, yi, 0.0);
                 p_pt2 = KDL::Vector(xi, yi, 0.0);
-//                std::cout << "crossing" << std::endl;
                 return;
             }
         }
@@ -210,19 +361,6 @@ public:
         return m_id;
     }
 
-    double jointLimitTrq(double hl, double ll, double ls,
-        double r_max, double q, double &out_limit_activation) {
-        if (q > (hl - ls)) {
-            out_limit_activation = fabs((q - hl + ls) / ls);
-            return -1 * ((q - hl + ls) / ls) * ((q - hl + ls) / ls) * r_max;
-        } else if (q < (ll + ls)) {
-            out_limit_activation = fabs((ll + ls - q) / ls);
-            return ((ll + ls - q) / ls) * ((ll + ls - q) / ls) * r_max;
-        } else {
-            out_limit_activation = 0.0;
-            return 0.0;
-        }
-    }
     void spin() {
         
         // initialize random seed
@@ -240,7 +378,21 @@ public:
         // collision model
         //
         boost::shared_ptr<self_collision::CollisionModel> col_model = self_collision::CollisionModel::parseURDF(robot_description_str);
-	    col_model-> parseSRDF(robot_semantic_description_str);
+	    col_model->parseSRDF(robot_semantic_description_str);
+        col_model->generateCollisionPairs();
+
+        self_collision::Link::VecPtrCollision col_array;
+        boost::shared_ptr< self_collision::Collision > pcol(new self_collision::Collision());
+        pcol->geometry.reset(new self_collision::Capsule());
+        boost::shared_ptr<self_collision::Capsule > cap = boost::static_pointer_cast<self_collision::Capsule >(pcol->geometry);
+        cap->radius = 0.2;
+        cap->length = 0.3;
+        pcol->origin = KDL::Frame(KDL::Vector(1, 0.5, 0));
+        col_array.push_back(pcol);
+        if (!col_model->addLink("env_link", "base", col_array)) {
+            ROS_ERROR("ERROR: could not add external collision objects to the collision model");
+            return;
+        }
         col_model->generateCollisionPairs();
 
         std::vector<std::string > joint_names;
@@ -270,6 +422,9 @@ public:
         J_r_HAND_6.resize(6, ndof);
         J_r_HAND.resize(3, ndof);
 
+        //
+        // robot state
+        //
         Eigen::VectorXd q, dq, ddq, torque;
         q.resize( ndof );
         dq.resize( ndof );
@@ -286,34 +441,23 @@ public:
 
         std::vector<KDL::Frame > links_fk(col_model->link_count_);
 
-        // temporary variables
-        Eigen::MatrixXd tmpNK_(ndof, 6);
-        Eigen::MatrixXd tmpKK_(6, 6);
-        Eigen::MatrixXd tmpKK2_(6, 6);
-        Eigen::VectorXd tmpK_(6);
-        Eigen::MatrixXd tmpNN_(ndof, ndof);
-        Eigen::MatrixXd tmpKN_(6, ndof);
-        Eigen::GeneralizedSelfAdjointEigenSolver<Eigen::MatrixXd> es_;
-        Eigen::PartialPivLU<Eigen::MatrixXd> lu_, luKK_;
+        Eigen::VectorXd lower_limit(ndof), upper_limit(ndof), limit_range(ndof), max_trq(ndof);
 
-        Eigen::MatrixXd A(6, 6), Q(6, 6), Dc(6, 6);
-        Eigen::VectorXd K0(6);
-
-        std::vector<double > lower_limit_, upper_limit_, limit_range_, max_trq_;
-        for (std::vector<std::string >::const_iterator name_it = joint_names.begin(); name_it != joint_names.end(); name_it++) {
+        int q_idx = 0;
+        for (std::vector<std::string >::const_iterator name_it = joint_names.begin(); name_it != joint_names.end(); name_it++, q_idx++) {
             for (std::vector<self_collision::Joint>::const_iterator j_it = col_model->joints_.begin(); j_it != col_model->joints_.end(); j_it++) {
                 if ( (*name_it) == j_it->name_) {
-                    lower_limit_.push_back(j_it->lower_limit_);
-                    upper_limit_.push_back(j_it->upper_limit_);
+                    lower_limit[q_idx] = j_it->lower_limit_;
+                    upper_limit[q_idx] = j_it->upper_limit_;
+                    break;
                 }
             }
-            limit_range_.push_back(10.0/180.0*PI);
-            max_trq_.push_back(10.0);
+            limit_range[q_idx] = 10.0/180.0*PI;
+            max_trq[q_idx] = 10.0;
         }
 
-        if (lower_limit_.size() != ndof) {
-            ROS_ERROR("Wrong number of joint limit entries %lu != %d.", lower_limit_.size(), ndof);
-        }
+        Task_JLC task_JLC(lower_limit, upper_limit, limit_range, max_trq);
+        Task_HAND task_HAND(ndof, 3);
 
         // loop variables
         ros::Time last_time = ros::Time::now();
@@ -339,44 +483,9 @@ public:
             //
             // joint limit avoidance
             //
-
-            // code from joint_limit_avoidance.cpp
-            Eigen::VectorXd activation_JLC(ndof);
-            Eigen::VectorXd k_(ndof);
-            Eigen::VectorXd k0_(ndof);
-            Eigen::MatrixXd q_(ndof, ndof), d_;
             Eigen::VectorXd torque_JLC(ndof);
-            for (int q_idx = 0; q_idx < ndof; q_idx++) {
-                torque_JLC(q_idx) = jointLimitTrq(upper_limit_[q_idx],
-                                           lower_limit_[q_idx], limit_range_[q_idx], max_trq_[q_idx],
-                                           q[q_idx], activation_JLC[q_idx]);
-                activation_JLC[q_idx] *= 10.0;
-                if (activation_JLC[q_idx] > 1.0) {
-                    activation_JLC[q_idx] = 1.0;
-                }
-
-                if (fabs(torque_JLC(q_idx)) > 0.001) {
-                    k_(q_idx) = max_trq_[q_idx]/limit_range_[q_idx];
-                } else {
-                    k_(q_idx) = 0.001;
-                }
-            }
-
-            tmpNN_ = k_.asDiagonal();
-            es_.compute(tmpNN_, dyn_model.I);
-            q_ = es_.eigenvectors().inverse();
-            k0_ = es_.eigenvalues();
-
-            tmpNN_ = k0_.cwiseSqrt().asDiagonal();
-
-            d_.noalias() = 2.0 * q_.adjoint() * 0.7 * tmpNN_ * q_;
-
-            torque_JLC.noalias() -= d_ * dq;
-
-            // calculate jacobian (the activation function)
-            KinematicModel::Jacobian J_JLC = activation_JLC.asDiagonal();
-            Eigen::MatrixXd N_JLC = Eigen::MatrixXd::Identity(ndof, ndof) - (J_JLC.transpose() * J_JLC);
-
+            Eigen::MatrixXd N_JLC(ndof, ndof);
+            task_JLC.compute(q, dq, dyn_model.I, torque_JLC, N_JLC);
 
             //
             // collision constraints
@@ -392,13 +501,17 @@ public:
                 KDL::Frame T_B_L1 = links_fk[link1_idx];
                 KDL::Frame T_B_L2 = links_fk[link2_idx];
 
+//                for (self_collision::Link::VecPtrCollision::const_iterator col1 = link1->collision_array.begin(); col1 != link1->collision_array.end(); col1++) {
+  //                  std::cout << link1->name << " " << (*col1)->geometry
+    //            }
+
                 for (self_collision::Link::VecPtrCollision::const_iterator col1 = link1->collision_array.begin(); col1 != link1->collision_array.end(); col1++) {
                     for (self_collision::Link::VecPtrCollision::const_iterator col2 = link2->collision_array.begin(); col2 != link2->collision_array.end(); col2++) {
                         KDL::Frame T_B_C1 = T_B_L1 * (*col1)->origin;
                         KDL::Frame T_B_C2 = T_B_L2 * (*col2)->origin;
                         boost::shared_ptr< self_collision::Geometry > geom1 = (*col1)->geometry;
                         boost::shared_ptr< self_collision::Geometry > geom2 = (*col2)->geometry;
-                            
+
                         double c_dist = (T_B_C1.p - T_B_C2.p).Norm();
                         double dist = 1000000.0;
                         double radius1, radius2;
@@ -460,7 +573,6 @@ public:
                         }
 
                         if (dist < 100000.0) {
-//                            std::cout << "dist " << dist << " " << col_model->links_[link1_idx]->name << " " << col_model->links_[link2_idx]->name << std::endl;
                             CollisionInfo col_info;
                             col_info.link1_idx = link1_idx;
                             col_info.link2_idx = link2_idx;
@@ -529,9 +641,6 @@ public:
                 torque_COL[q_idx] = 0.0;
             }
             int m_id = 1000;
-            publishJointState(q, joint_names);
-            publishRobotModelVis(0, col_model, links_fk);
-
             Eigen::MatrixXd N_COL(Eigen::MatrixXd::Identity(ndof, ndof));
             for (std::vector<CollisionInfo>::const_iterator it = link_collisions.begin(); it != link_collisions.end(); it++) {
                 KDL::Frame &T_B_L1 = links_fk[it->link1_idx];
@@ -626,6 +735,8 @@ public:
             //
             // effector task
             //
+            Eigen::VectorXd torque_HAND(ndof);
+
             KDL::Frame T_B_E = links_fk[effector_idx];
             KDL::Frame r_HAND_current = T_B_E;
             KDL::Twist diff = KDL::diff(r_HAND_current, r_HAND_target, 1.0);
@@ -642,10 +753,6 @@ public:
             Dxi[0] = 0.7;
             Dxi[1] = 0.7;
             Dxi[2] = 0.7;
-            Eigen::VectorXd wrench(3);
-            for (int dim_idx = 0; dim_idx < 3; dim_idx++) {
-                wrench[dim_idx] = Kc[dim_idx] * r_HAND_diff[dim_idx];
-            }
 
             kin_model.getJacobian(J_r_HAND_6, effector_name, q);
 
@@ -654,33 +761,9 @@ public:
                 J_r_HAND(1, q_idx) = J_r_HAND_6(1, q_idx);
                 J_r_HAND(2, q_idx) = J_r_HAND_6(5, q_idx);
             }
-            Eigen::VectorXd torque_HAND = J_r_HAND.transpose() * wrench;
 
-            // code form cartesian_impedance.h
-            KinematicModel::Jacobian JT = J_r_HAND.transpose();
-            tmpNK_.noalias() = J_r_HAND * dyn_model.invI;
-            A.noalias() = tmpNK_ * JT;
-            luKK_.compute(A);
-            A = luKK_.inverse();
+            task_HAND.compute(r_HAND_diff, Kc, Dxi, J_r_HAND, dq, dyn_model.invI, torque_HAND);
 
-            tmpKK_ = Kc.asDiagonal();
-            UNRESTRICT_ALLOC;
-            es_.compute(tmpKK_, A);
-            RESTRICT_ALLOC;
-            K0 = es_.eigenvalues();
-            luKK_.compute(es_.eigenvectors());
-            Q = luKK_.inverse();
-
-            tmpKK_ = Dxi.asDiagonal();
-            Dc.noalias() = Q.transpose() * tmpKK_;
-            tmpKK_ = K0.cwiseSqrt().asDiagonal();
-            tmpKK2_.noalias() = Dc *  tmpKK_;
-            Dc.noalias() = tmpKK2_ * Q;
-            tmpK_.noalias() = J_r_HAND * dq;
-            wrench.noalias() = 2.0 * Dc * tmpK_;
-            torque_HAND.noalias() -= JT * wrench;
-
-//            std::cout<< torque_COL << std::endl;
             torque = torque_JLC + N_JLC.transpose() * (torque_COL + (N_COL.transpose() * torque_HAND));
 //            torque = torque_JLC + N_JLC.transpose() * torque_COL;
 //            torque = torque_JLC + N_JLC.transpose() * torque_HAND;
@@ -703,7 +786,7 @@ public:
                 ros::Time last_time = ros::Time::now();
             }
             ros::spinOnce();
-//            loop_rate.sleep();
+            loop_rate.sleep();
         }
 
     }

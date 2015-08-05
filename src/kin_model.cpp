@@ -101,7 +101,9 @@ void KinematicModel::getJacobiansForPairX(Jacobian &jac1, Jacobian &jac2,
 
     std::set<unsigned int> link1_chain;
     KDL::SegmentMap::const_iterator root = tree_.getRootSegment();
-    for (KDL::SegmentMap::const_iterator seg_it = tree_.getSegment(link_name1); seg_it != root; seg_it = seg_it->second.parent) {
+    KDL::SegmentMap::const_iterator end = tree_.getSegments().end();
+
+    for (KDL::SegmentMap::const_iterator seg_it = tree_.getSegment(link_name1); seg_it != root && seg_it != end; seg_it = seg_it->second.parent) {
         if (seg_it->second.segment.getJoint().getType() == KDL::Joint::None) {
             continue;
         }
@@ -110,7 +112,7 @@ void KinematicModel::getJacobiansForPairX(Jacobian &jac1, Jacobian &jac2,
 
     std::string common_link_name;
 
-    for (KDL::SegmentMap::const_iterator seg_it = tree_.getSegment(link_name2); seg_it != root; seg_it = seg_it->second.parent) {
+    for (KDL::SegmentMap::const_iterator seg_it = tree_.getSegment(link_name2); seg_it != root && seg_it != end; seg_it = seg_it->second.parent) {
         if (seg_it->second.segment.getJoint().getType() == KDL::Joint::None) {
             continue;
         }
@@ -142,11 +144,17 @@ void KinematicModel::getJacobianForX(Jacobian &jac, const std::string &link_name
         else {
             root = tree_.getSegment(base_name);
         }
+
         // Lets recursively iterate until we are in the root segment
         KDL::SegmentMap::const_iterator it = tree_.getSegment(link_name);
+        if (it == tree_.getSegments().end()) {
+            // link_name not found in the kinematic model - return zero jacobian
+            return;
+        }
         while (it != root) {    //l_index != root_index:
             // get the corresponding q_nr for this TreeElement:
             // get the pose of the segment:
+
             const KDL::Segment &seg_kdl = it->second.segment;
             int q_idx = -1;
             double q_seg = 0.0;
