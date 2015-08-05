@@ -29,25 +29,34 @@
 // Author: Dawid Seredynski
 //
 
-#ifndef PLANAR5_DYN_MODEL_H
-#define PLANAR5_DYN_MODEL_H
+#ifndef KIN_MODEL_H
+#define KIN_MODEL_H
 
+#include <kdl_parser/kdl_parser.hpp>
+#include <kdl/frames.hpp>
+#include <kdl/treejnttojacsolver.hpp>
+#include <kdl/treefksolverpos_recursive.hpp>
 #include "Eigen/Dense"
+#include <map>
 
-class DynModelPlanar5 {
+class KinematicModel {
 public:
-    DynModelPlanar5();
-    ~DynModelPlanar5();
+    typedef Eigen::MatrixXd Jacobian;
 
-    void coriolis(Eigen::MatrixXd &C, const Eigen::VectorXd &q, const Eigen::VectorXd &dq);
-    void inertia(Eigen::MatrixXd &I, const Eigen::VectorXd &q);
-    void gaussjordan(const Eigen::MatrixXd &inMatrix, Eigen::MatrixXd &outMatrix, int dim);
-//    void matvecprod(double *outVector, const double *inMatrix, const double *inVector, int nRow, int nCol);
-    void computeM(const Eigen::VectorXd &q);
-    void accel(Eigen::VectorXd &QDD, const Eigen::VectorXd &q, const Eigen::VectorXd &dq, const Eigen::VectorXd &t);
+    KinematicModel(const std::string &urdf_string, const std::vector<std::string > &joint_names);
+    ~KinematicModel();
 
-    Eigen::MatrixXd I, invI, C;
-    Eigen::VectorXd tmpTau;
+    void getJacobian(Jacobian &jac, const std::string &link_name, const Eigen::VectorXd &q);
+    void calculateFk(KDL::Frame &T, const std::string &link_name, const Eigen::VectorXd &q);
+    void getJacobiansForPairX(Jacobian &jac1, Jacobian &jac2,
+                                        const std::string &link_name1, const KDL::Vector &x1,
+                                        const std::string &link_name2, const KDL::Vector &x2, const Eigen::VectorXd &q);
+    void getJacobianForX(Jacobian &jac, const std::string &link_name, const KDL::Vector &x, const Eigen::VectorXd &q, const std::string &base_name);
+    KDL::Tree tree_;
+protected:
+    std::map<int, int > q_idx_q_nr_map_, q_nr_q_idx_map_;
+    KDL::TreeJntToJacSolver *jac_solver_;
+    KDL::TreeFkSolverPos_recursive *fk_solver_;
 };
 
 #endif
