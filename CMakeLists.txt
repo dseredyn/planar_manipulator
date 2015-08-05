@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8)
 project(planar_manipulator)
 
 find_package(catkin REQUIRED COMPONENTS
-  rtt_ros rtt_rosclock std_msgs eigen_conversions cmake_modules image_transport self_collision
+  rtt_ros rtt_rosclock std_msgs tf eigen_conversions cmake_modules image_transport self_collision
   )
 
 find_package(Eigen REQUIRED)

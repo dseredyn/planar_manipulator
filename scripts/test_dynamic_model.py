@@ -514,7 +514,7 @@ class TestDynamicModel:
             #
             # end-effector task
             #
-            T_B_E = solver.calculateFk('base', effector_name, self.q)
+            T_B_E = links_fk[effector_name]
             r_HAND_current = T_B_E
             diff = PyKDL.diff(r_HAND_current, r_HAND_target)
             r_HAND_diff = np.array( [diff[0], diff[1], diff[5]] )
