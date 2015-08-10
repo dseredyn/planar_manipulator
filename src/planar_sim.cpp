@@ -43,7 +43,7 @@
 #include "Eigen/LU"
 
 #include "planar5_dyn_model.h"
-#include <collision_model/urdf_collision_parser.h>
+#include <collision_convex_model/collision_convex_model.h>
 #include "kin_model.h"
 #include "marker_publisher.h"
 
