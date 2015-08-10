@@ -55,6 +55,131 @@
 #define UNRESTRICT_ALLOC
 #endif
 
+class CollisionInfo {
+public:
+    int link1_idx;
+    int link2_idx;
+    KDL::Vector p1_B;
+    KDL::Vector p2_B;
+    double dist;
+    KDL::Vector n1_B;
+    KDL::Vector n2_B;
+};
+
+class Task_COL {
+public:
+    Task_COL(int ndof, double activation_dist, const KinematicModel &kin_model, const boost::shared_ptr<self_collision::CollisionModel> &col_model) :
+        ndof_(ndof),
+        activation_dist_(activation_dist),
+        kin_model_(kin_model)
+    {
+        for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
+            link_names_vec_.push_back(col_model->getLinkName(l_idx));
+        }
+    }
+
+    ~Task_COL() {
+    }
+
+    void compute(const Eigen::VectorXd &q, const Eigen::VectorXd &dq, const Eigen::MatrixXd &invI, const std::vector<KDL::Frame > &links_fk, const std::vector<CollisionInfo> &link_collisions, Eigen::VectorXd &torque_COL, Eigen::MatrixXd &N_COL) {
+            for (std::vector<CollisionInfo>::const_iterator it = link_collisions.begin(); it != link_collisions.end(); it++) {
+                const KDL::Frame &T_B_L1 = links_fk[it->link1_idx];
+                const std::string &link1_name = link_names_vec_[it->link1_idx];
+                const std::string &link2_name = link_names_vec_[it->link2_idx];
+
+                KDL::Frame T_L1_B = T_B_L1.Inverse();
+                const KDL::Frame &T_B_L2 = links_fk[it->link2_idx];
+                KDL::Frame T_L2_B = T_B_L2.Inverse();
+                KDL::Vector p1_L1 = T_L1_B * it->p1_B;
+                KDL::Vector p2_L2 = T_L2_B * it->p2_B;
+                KDL::Vector n1_L1 = KDL::Frame(T_L1_B.M) * it->n1_B;
+                KDL::Vector n2_L2 = KDL::Frame(T_L2_B.M) * it->n2_B;
+
+                // visualization
+/*                if (it->dist > 0.0) {
+                    m_id = publishVectorMarker(markers_pub_, m_id, it->p1_B, it->p2_B, 1, 1, 1, 0.01, "base");
+                }
+                else {
+                    m_id = publishVectorMarker(markers_pub_, m_id, it->p1_B, it->p2_B, 1, 0, 0, 0.01, "base");
+                }
+*/
+                KinematicModel::Jacobian jac1(6, ndof_), jac2(6, ndof_);
+                kin_model_.getJacobiansForPairX(jac1, jac2, link1_name, p1_L1, link2_name, p2_L2, q);
+
+                double depth = (activation_dist_ - it->dist);
+
+                // repulsive force
+                double Fmax = 20.0;
+                double f = 0.0;
+                if (it->dist <= activation_dist_) {
+                    f = (it->dist - activation_dist_) / activation_dist_;
+                }
+                else {
+                    f = 0.0;
+                }
+                double Frep = Fmax * f * f;
+
+                double K = 2.0 * Fmax / (activation_dist_ * activation_dist_);
+
+                // the mapping between motions along contact normal and the Cartesian coordinates
+                KDL::Vector e1 = n1_L1;
+                KDL::Vector e2 = n2_L2;
+                Eigen::VectorXd Jd1(3), Jd2(3);
+                for (int i = 0; i < 3; i++) {
+                    Jd1[i] = e1[i];
+                    Jd2[i] = e2[i];
+                }
+
+                KinematicModel::Jacobian jac1_lin(3, ndof_), jac2_lin(3, ndof_);
+                for (int q_idx = 0; q_idx < ndof_; q_idx++) {
+                    for (int row_idx = 0; row_idx < 3; row_idx++) {
+                        jac1_lin(row_idx, q_idx) = jac1(row_idx, q_idx);
+                        jac2_lin(row_idx, q_idx) = jac2(row_idx, q_idx);
+                    }
+                }
+
+                KinematicModel::Jacobian Jcol1 = Jd1.transpose() * jac1_lin;
+                KinematicModel::Jacobian Jcol2 = Jd2.transpose() * jac2_lin;
+
+                KinematicModel::Jacobian Jcol(1, ndof_);
+                for (int q_idx = 0; q_idx < ndof_; q_idx++) {
+                    Jcol(0, q_idx) = Jcol1(0, q_idx) + Jcol2(0, q_idx);
+                }
+
+                // calculate relative velocity between points (1 dof)
+                double ddij = (Jcol * dq)(0,0);
+
+                double activation = 5.0*depth/activation_dist_;
+                if (activation > 1.0) {
+                    activation = 1.0;
+                }
+                if (activation < 0.0) {
+                    activation = 0.0;
+                }
+                if (ddij <= 0.0) {
+                    activation = 0.0;
+                }
+
+                Eigen::MatrixXd Ncol12(ndof_, ndof_);
+                Ncol12 = Eigen::MatrixXd::Identity(ndof_, ndof_) - (Jcol.transpose() * activation * Jcol);
+                N_COL = N_COL * Ncol12;
+
+                // calculate collision mass (1 dof)
+                double Mdij = (Jcol * invI * Jcol.transpose())(0,0);
+
+                double D = 2.0 * 0.7 * sqrt(Mdij * K);
+                Eigen::VectorXd d_torque = Jcol.transpose() * (-Frep - D * ddij);
+                torque_COL += d_torque;
+
+            }
+    }
+protected:
+    int ndof_;
+    double activation_dist_;
+    const KinematicModel &kin_model_;
+    std::vector<std::string > link_names_vec_;
+};
+
 class Task_HAND {
 public:
     Task_HAND(int ndof, int dim) :
@@ -211,17 +336,6 @@ protected:
     Eigen::GeneralizedSelfAdjointEigenSolver<Eigen::MatrixXd> es_;
 };
 
-class CollisionInfo {
-public:
-    int link1_idx;
-    int link2_idx;
-    KDL::Vector p1_B;
-    KDL::Vector p2_B;
-    double dist;
-    KDL::Vector n1_B;
-    KDL::Vector n2_B;
-};
-
 class TestDynamicModel {
     ros::NodeHandle nh_;
     ros::Publisher joint_state_pub_;
@@ -340,10 +454,9 @@ public:
     }
 
     int publishRobotModelVis(int m_id, const boost::shared_ptr<self_collision::CollisionModel> &col_model, const std::vector<KDL::Frame > &T) {
-        for (int l_idx = 0; l_idx < col_model->link_count_; l_idx++) {
-            boost::shared_ptr<self_collision::Link> link = col_model->links_[l_idx];
-            KDL::Frame T_B_L = T[l_idx];
-            for (self_collision::Link::VecPtrCollision::const_iterator it = link->collision_array.begin(); it != link->collision_array.end(); it++) {
+        for (self_collision::CollisionModel::VecPtrLink::const_iterator l_it = col_model->getLinks().begin(); l_it != col_model->getLinks().end(); l_it++) {
+            KDL::Frame T_B_L = T[(*l_it)->index_];
+            for (self_collision::Link::VecPtrCollision::const_iterator it = (*l_it)->collision_array.begin(); it != (*l_it)->collision_array.end(); it++) {
                 KDL::Frame T_B_O = T_B_L * (*it)->origin;
                 if ((*it)->geometry->type == self_collision::Geometry::CONVEX) {
                     // TODO
@@ -361,150 +474,16 @@ public:
         return m_id;
     }
 
-    void spin() {
-        
-        // initialize random seed
-        srand(time(NULL));
-
-        // dynamics model
-        DynModelPlanar5 dyn_model;
-
-        std::string robot_description_str;
-        std::string robot_semantic_description_str;
-        nh_.getParam("/robot_description", robot_description_str);
-        nh_.getParam("/robot_semantic_description", robot_semantic_description_str);
-
-        //
-        // collision model
-        //
-        boost::shared_ptr<self_collision::CollisionModel> col_model = self_collision::CollisionModel::parseURDF(robot_description_str);
-	    col_model->parseSRDF(robot_semantic_description_str);
-        col_model->generateCollisionPairs();
-
-        // external collision objects - part of virtual link connected to the base link
-        self_collision::Link::VecPtrCollision col_array;
-        boost::shared_ptr< self_collision::Collision > pcol(new self_collision::Collision());
-        pcol->geometry.reset(new self_collision::Capsule());
-        boost::shared_ptr<self_collision::Capsule > cap = boost::static_pointer_cast<self_collision::Capsule >(pcol->geometry);
-        cap->radius = 0.2;
-        cap->length = 0.3;
-        pcol->origin = KDL::Frame(KDL::Vector(1, 0.5, 0));
-        col_array.push_back(pcol);
-        if (!col_model->addLink("env_link", "base", col_array)) {
-            ROS_ERROR("ERROR: could not add external collision objects to the collision model");
-            return;
-        }
-        col_model->generateCollisionPairs();
-
-        //
-        // robot state
-        //
-        std::vector<std::string > joint_names;
-        joint_names.push_back("0_joint");
-        joint_names.push_back("1_joint");
-        joint_names.push_back("2_joint");
-        joint_names.push_back("3_joint");
-        joint_names.push_back("4_joint");
-
-        int ndof = joint_names.size();
-
-        Eigen::VectorXd q, dq, ddq, torque;
-        q.resize( ndof );
-        dq.resize( ndof );
-        ddq.resize( ndof );
-        torque.resize( ndof );
-        for (int q_idx = 0; q_idx < ndof; q_idx++) {
-            q[q_idx] = 0.1;
-            dq[q_idx] = 0.0;
-            ddq[q_idx] = 0.0;
-            torque[q_idx] = 0.0;
-        }
-
-        std::string effector_name = "effector";
-        int effector_idx = 0;
-        for (int l_idx = 0; l_idx < col_model->link_count_; l_idx++) {
-            if (col_model->links_[l_idx]->name == effector_name) {
-                effector_idx = l_idx;
-                break;
-            }
-        }
-
-        //
-        // kinematic model
-        //
-        KinematicModel kin_model(robot_description_str, joint_names);
-
-        KinematicModel::Jacobian J_r_HAND_6, J_r_HAND;
-        J_r_HAND_6.resize(6, ndof);
-        J_r_HAND.resize(3, ndof);
-
-        std::vector<KDL::Frame > links_fk(col_model->link_count_);
-
-        // joint limits
-        Eigen::VectorXd lower_limit(ndof), upper_limit(ndof), limit_range(ndof), max_trq(ndof);
-        int q_idx = 0;
-        for (std::vector<std::string >::const_iterator name_it = joint_names.begin(); name_it != joint_names.end(); name_it++, q_idx++) {
-            for (std::vector<self_collision::Joint>::const_iterator j_it = col_model->joints_.begin(); j_it != col_model->joints_.end(); j_it++) {
-                if ( (*name_it) == j_it->name_) {
-                    lower_limit[q_idx] = j_it->lower_limit_;
-                    upper_limit[q_idx] = j_it->upper_limit_;
-                    break;
-                }
-            }
-            limit_range[q_idx] = 10.0/180.0*PI;
-            max_trq[q_idx] = 10.0;
-        }
-
-        //
-        // Tasks declaration
-        //
-        Task_JLC task_JLC(lower_limit, upper_limit, limit_range, max_trq);
-        Task_HAND task_HAND(ndof, 3);
-
-        // loop variables
-        ros::Time last_time = ros::Time::now();
-        KDL::Frame r_HAND_target;
-        int loop_counter = 10000;
-        ros::Rate loop_rate(100);
-        while (ros::ok()) {
-
-            if (loop_counter > 500) {
-                r_HAND_target = KDL::Frame(KDL::Rotation::RotZ(randomUniform(-PI, PI)), KDL::Vector(randomUniform(0,2), randomUniform(-1,1), 0));
-
-                publishTransform(r_HAND_target, "effector_dest");
-                loop_counter = 0;
-            }
-            loop_counter += 1;
-
-            // calculate forward kinematics for all links
-            for (int l_idx = 0; l_idx < col_model->link_count_; l_idx++) {
-                kin_model.calculateFk(links_fk[l_idx], col_model->links_[l_idx]->name, q);
-            }
-            dyn_model.computeM(q);
-
-            //
-            // joint limit avoidance
-            //
-            Eigen::VectorXd torque_JLC(ndof);
-            Eigen::MatrixXd N_JLC(ndof, ndof);
-            task_JLC.compute(q, dq, dyn_model.I, torque_JLC, N_JLC);
-
-            //
-            // collision constraints
-            //
-            std::vector<CollisionInfo> link_collisions;
-            double activation_dist = 0.05;
+    void getCollisionPairs(const boost::shared_ptr<self_collision::CollisionModel> &col_model, const std::vector<KDL::Frame > &links_fk, double activation_dist, std::vector<CollisionInfo> &link_collisions) {
             // self collision
             for (self_collision::CollisionModel::CollisionPairs::const_iterator it = col_model->enabled_collisions.begin(); it != col_model->enabled_collisions.end(); it++) {
                 int link1_idx = it->first;
                 int link2_idx = it->second;
-                boost::shared_ptr<self_collision::Link> link1 = col_model->links_[link1_idx];
-                boost::shared_ptr<self_collision::Link> link2 = col_model->links_[link2_idx];
                 KDL::Frame T_B_L1 = links_fk[link1_idx];
                 KDL::Frame T_B_L2 = links_fk[link2_idx];
 
-                for (self_collision::Link::VecPtrCollision::const_iterator col1 = link1->collision_array.begin(); col1 != link1->collision_array.end(); col1++) {
-                    for (self_collision::Link::VecPtrCollision::const_iterator col2 = link2->collision_array.begin(); col2 != link2->collision_array.end(); col2++) {
+                for (self_collision::Link::VecPtrCollision::const_iterator col1 = col_model->getLinkCollisionArray(link1_idx).begin(); col1 != col_model->getLinkCollisionArray(link1_idx).end(); col1++) {
+                    for (self_collision::Link::VecPtrCollision::const_iterator col2 = col_model->getLinkCollisionArray(link2_idx).begin(); col2 != col_model->getLinkCollisionArray(link2_idx).end(); col2++) {
                         KDL::Frame T_B_C1 = T_B_L1 * (*col1)->origin;
                         KDL::Frame T_B_C2 = T_B_L2 * (*col2)->origin;
                         boost::shared_ptr< self_collision::Geometry > geom1 = (*col1)->geometry;
@@ -589,6 +568,135 @@ public:
                     }
                 }
             }
+    }
+
+    void spin() {
+        
+        // initialize random seed
+        srand(time(NULL));
+
+        // dynamics model
+        DynModelPlanar5 dyn_model;
+
+        std::string robot_description_str;
+        std::string robot_semantic_description_str;
+        nh_.getParam("/robot_description", robot_description_str);
+        nh_.getParam("/robot_semantic_description", robot_semantic_description_str);
+
+        //
+        // collision model
+        //
+        boost::shared_ptr<self_collision::CollisionModel> col_model = self_collision::CollisionModel::parseURDF(robot_description_str);
+	    col_model->parseSRDF(robot_semantic_description_str);
+        col_model->generateCollisionPairs();
+
+        // external collision objects - part of virtual link connected to the base link
+        self_collision::Link::VecPtrCollision col_array;
+        boost::shared_ptr< self_collision::Collision > pcol(new self_collision::Collision());
+        pcol->geometry.reset(new self_collision::Capsule());
+        boost::shared_ptr<self_collision::Capsule > cap = boost::static_pointer_cast<self_collision::Capsule >(pcol->geometry);
+        cap->radius = 0.2;
+        cap->length = 0.3;
+        pcol->origin = KDL::Frame(KDL::Vector(1, 0.5, 0));
+        col_array.push_back(pcol);
+        if (!col_model->addLink("env_link", "base", col_array)) {
+            ROS_ERROR("ERROR: could not add external collision objects to the collision model");
+            return;
+        }
+        col_model->generateCollisionPairs();
+
+        //
+        // robot state
+        //
+        std::vector<std::string > joint_names;
+        joint_names.push_back("0_joint");
+        joint_names.push_back("1_joint");
+        joint_names.push_back("2_joint");
+        joint_names.push_back("3_joint");
+        joint_names.push_back("4_joint");
+
+        int ndof = joint_names.size();
+
+        Eigen::VectorXd q, dq, ddq, torque;
+        q.resize( ndof );
+        dq.resize( ndof );
+        ddq.resize( ndof );
+        torque.resize( ndof );
+        for (int q_idx = 0; q_idx < ndof; q_idx++) {
+            q[q_idx] = 0.1;
+            dq[q_idx] = 0.0;
+            ddq[q_idx] = 0.0;
+            torque[q_idx] = 0.0;
+        }
+
+        std::string effector_name = "effector";
+        int effector_idx = col_model->getLinkIndex(effector_name);
+
+        //
+        // kinematic model
+        //
+        KinematicModel kin_model(robot_description_str, joint_names);
+
+        KinematicModel::Jacobian J_r_HAND_6, J_r_HAND;
+        J_r_HAND_6.resize(6, ndof);
+        J_r_HAND.resize(3, ndof);
+
+        std::vector<KDL::Frame > links_fk(col_model->getLinksCount());
+
+        // joint limits
+        Eigen::VectorXd lower_limit(ndof), upper_limit(ndof), limit_range(ndof), max_trq(ndof);
+        int q_idx = 0;
+        for (std::vector<std::string >::const_iterator name_it = joint_names.begin(); name_it != joint_names.end(); name_it++, q_idx++) {
+
+            if (!col_model->getJointLimits( (*name_it), lower_limit[q_idx], upper_limit[q_idx] )) {
+                ROS_ERROR("ERROR: could not find joint with name %s", name_it->c_str() );
+                return;
+            }
+            limit_range[q_idx] = 10.0/180.0*PI;
+            max_trq[q_idx] = 10.0;
+        }
+
+        //
+        // Tasks declaration
+        //
+        Task_JLC task_JLC(lower_limit, upper_limit, limit_range, max_trq);
+        double activation_dist = 0.05;
+        Task_COL task_COL(ndof, activation_dist, kin_model, col_model);
+        Task_HAND task_HAND(ndof, 3);
+
+        // loop variables
+        ros::Time last_time = ros::Time::now();
+        KDL::Frame r_HAND_target;
+        int loop_counter = 10000;
+        ros::Rate loop_rate(100);
+        while (ros::ok()) {
+
+            if (loop_counter > 500) {
+                r_HAND_target = KDL::Frame(KDL::Rotation::RotZ(randomUniform(-PI, PI)), KDL::Vector(randomUniform(0,2), randomUniform(-1,1), 0));
+
+                publishTransform(r_HAND_target, "effector_dest");
+                loop_counter = 0;
+            }
+            loop_counter += 1;
+
+            // calculate forward kinematics for all links
+            for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
+                kin_model.calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), q);
+            }
+            dyn_model.computeM(q);
+
+            //
+            // joint limit avoidance
+            //
+            Eigen::VectorXd torque_JLC(ndof);
+            Eigen::MatrixXd N_JLC(ndof, ndof);
+            task_JLC.compute(q, dq, dyn_model.I, torque_JLC, N_JLC);
+
+            //
+            // collision constraints
+            //
+            std::vector<CollisionInfo> link_collisions;
+            getCollisionPairs(col_model, links_fk, activation_dist, link_collisions);
 
             Eigen::VectorXd torque_COL(ndof);
             for (int q_idx = 0; q_idx < ndof; q_idx++) {
@@ -596,94 +704,9 @@ public:
             }
             int m_id = 1000;
             Eigen::MatrixXd N_COL(Eigen::MatrixXd::Identity(ndof, ndof));
-            for (std::vector<CollisionInfo>::const_iterator it = link_collisions.begin(); it != link_collisions.end(); it++) {
-                KDL::Frame &T_B_L1 = links_fk[it->link1_idx];
-                const std::string &link1_name = col_model->links_[it->link1_idx]->name;
-                KDL::Frame T_L1_B = T_B_L1.Inverse();
-                KDL::Frame &T_B_L2 = links_fk[it->link2_idx];
-                const std::string &link2_name = col_model->links_[it->link2_idx]->name;
-                KDL::Frame T_L2_B = T_B_L2.Inverse();
-                KDL::Vector p1_L1 = T_L1_B * it->p1_B;
-                KDL::Vector p2_L2 = T_L2_B * it->p2_B;
-                KDL::Vector n1_L1 = KDL::Frame(T_L1_B.M) * it->n1_B;
-                KDL::Vector n2_L2 = KDL::Frame(T_L2_B.M) * it->n2_B;
 
-                if (it->dist > 0.0) {
-                    m_id = publishVectorMarker(markers_pub_, m_id, it->p1_B, it->p2_B, 1, 1, 1, 0.01, "base");
-                }
-                else {
-                    m_id = publishVectorMarker(markers_pub_, m_id, it->p1_B, it->p2_B, 1, 0, 0, 0.01, "base");
-                }
+            task_COL.compute(q, dq, dyn_model.invI, links_fk, link_collisions, torque_COL, N_COL);
 
-                KinematicModel::Jacobian jac1(6, ndof), jac2(6, ndof);
-                kin_model.getJacobiansForPairX(jac1, jac2, link1_name, p1_L1, link2_name, p2_L2, q);
-
-                double depth = (activation_dist - it->dist);
-
-                // repulsive force
-                double Fmax = 20.0;
-                double f = 0.0;
-                if (it->dist <= activation_dist) {
-                    f = (it->dist - activation_dist) / activation_dist;
-                }
-                else {
-                    f = 0.0;
-                }
-                double Frep = Fmax * f * f;
-
-                double K = 2.0 * Fmax / (activation_dist * activation_dist);
-
-                // the mapping between motions along contact normal and the Cartesian coordinates
-                KDL::Vector e1 = n1_L1;
-                KDL::Vector e2 = n2_L2;
-                Eigen::VectorXd Jd1(3), Jd2(3);
-                for (int i = 0; i < 3; i++) {
-                    Jd1[i] = e1[i];
-                    Jd2[i] = e2[i];
-                }
-
-                KinematicModel::Jacobian jac1_lin(3, ndof), jac2_lin(3, ndof);
-                for (int q_idx = 0; q_idx < ndof; q_idx++) {
-                    for (int row_idx = 0; row_idx < 3; row_idx++) {
-                        jac1_lin(row_idx, q_idx) = jac1(row_idx, q_idx);
-                        jac2_lin(row_idx, q_idx) = jac2(row_idx, q_idx);
-                    }
-                }
-
-                KinematicModel::Jacobian Jcol1 = Jd1.transpose() * jac1_lin;
-                KinematicModel::Jacobian Jcol2 = Jd2.transpose() * jac2_lin;
-
-                KinematicModel::Jacobian Jcol(1, ndof);
-                for (int q_idx = 0; q_idx < ndof; q_idx++) {
-                    Jcol(0, q_idx) = Jcol1(0, q_idx) + Jcol2(0, q_idx);
-                }
-
-                // calculate relative velocity between points (1 dof)
-                double ddij = (Jcol * dq)(0,0);
-
-                double activation = 5.0*depth/activation_dist;
-                if (activation > 1.0) {
-                    activation = 1.0;
-                }
-                if (activation < 0.0) {
-                    activation = 0.0;
-                }
-                if (ddij <= 0.0) {
-                    activation = 0.0;
-                }
-
-                Eigen::MatrixXd Ncol12(ndof, ndof);
-                Ncol12 = Eigen::MatrixXd::Identity(ndof, ndof) - (Jcol.transpose() * activation * Jcol);
-                N_COL = N_COL * Ncol12;
-
-                // calculate collision mass (1 dof)
-                double Mdij = (Jcol * dyn_model.invI * Jcol.transpose())(0,0);
-
-                double D = 2.0 * 0.7 * sqrt(Mdij * K);
-                Eigen::VectorXd d_torque = Jcol.transpose() * (-Frep - D * ddij);
-                torque_COL += d_torque;
-
-            }
             clearMarkers(markers_pub_, m_id, 1030);
 
             //
@@ -740,7 +763,7 @@ public:
                 ros::Time last_time = ros::Time::now();
             }
             ros::spinOnce();
-//            loop_rate.sleep();
+            loop_rate.sleep();
         }
 
     }
@@ -752,4 +775,5 @@ int main(int argc, char** argv) {
     test.spin();
     return 0;
 }
+
 
