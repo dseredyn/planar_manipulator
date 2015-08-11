@@ -54,17 +54,18 @@
 class TestDynamicModel {
     ros::NodeHandle nh_;
     ros::Publisher joint_state_pub_;
-    ros::Publisher markers_pub_;
+    MarkerPublisher markers_pub_;
     tf::TransformBroadcaster br;
 
     const double PI;
 
 public:
     TestDynamicModel() :
-        PI(3.141592653589793)
+        nh_(),
+        PI(3.141592653589793),
+        markers_pub_(nh_)
     {
         joint_state_pub_ = nh_.advertise<sensor_msgs::JointState>("/joint_states", 10);
-        markers_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("/velma_markers", 10);
     }
 
     ~TestDynamicModel() {
@@ -105,11 +106,11 @@ public:
                 }
                 else if ((*it)->geometry->type == self_collision::Geometry::SPHERE) {
                     self_collision::Sphere *sphere = static_cast<self_collision::Sphere* >((*it)->geometry.get());
-                    m_id = publishSinglePointMarker(markers_pub_, m_id, T_B_O.p, 0, 1, 0, sphere->radius*2, "base");
+                    m_id = markers_pub_.addSinglePointMarker(m_id, T_B_O.p, 0, 1, 0, 1, sphere->radius*2, "base");
                 }
                 else if ((*it)->geometry->type == self_collision::Geometry::CAPSULE) {
                     self_collision::Capsule *capsule = static_cast<self_collision::Capsule* >((*it)->geometry.get());
-                    m_id = publishCapsule(markers_pub_, m_id, T_B_O, capsule->length, capsule->radius, "base");
+                    m_id = markers_pub_.addCapsule(m_id, T_B_O, capsule->length, capsule->radius, "base");
                 }
             }
         }
@@ -248,12 +249,9 @@ public:
             for (int q_idx = 0; q_idx < ndof; q_idx++) {
                 torque_COL[q_idx] = 0.0;
             }
-            int m_id = 1000;
             Eigen::MatrixXd N_COL(Eigen::MatrixXd::Identity(ndof, ndof));
 
             task_COL.compute(q, dq, dyn_model.invI, links_fk, link_collisions, torque_COL, N_COL);
-
-            clearMarkers(markers_pub_, m_id, 1030);
 
             //
             // effector task
@@ -306,6 +304,7 @@ public:
                 publishJointState(q, joint_names);
                 int m_id = 0;
                 m_id = publishRobotModelVis(m_id, col_model, links_fk);
+                markers_pub_.publish();
                 ros::Time last_time = ros::Time::now();
             }
             ros::spinOnce();

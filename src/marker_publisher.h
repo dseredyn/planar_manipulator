@@ -35,15 +35,24 @@
 #include "ros/ros.h"
 #include "visualization_msgs/MarkerArray.h"
 #include <kdl/frames.hpp>
-//#include "narrowphase.h"
 
-int publishSinglePointMarker(ros::Publisher &pub, int m_id, const KDL::Vector &pos, double r, double g, double b, double size, const std::string &frame_id);
-int publishVectorMarker(ros::Publisher &pub, int m_id, const KDL::Vector &v1, const KDL::Vector &v2, double r, double g, double b, double size, const std::string &frame_id);
-int publishLineMarker(ros::Publisher &pub, int m_id, const KDL::Vector &pos1, const KDL::Vector &pos2, double r, double g, double b);
-int publishCapsule(ros::Publisher &pub, int m_id, const KDL::Frame &fr, double length, double radius, const std::string &frame_id);
-int publishCylinder(ros::Publisher &pub, int m_id, KDL::Frame fr, double length, double radius);
-//int publishMeshMarker(ros::Publisher &pub, int m_id, const KDL::Frame &tf, const fcl_2::Vec3f *points, int num_planes, const int *polygons, double r, double g, double b);
-void clearMarkers(ros::Publisher &pub, int from, int to);
+class MarkerPublisher {
+public:
+    MarkerPublisher(ros::NodeHandle &nh);
+    ~MarkerPublisher();
+
+    void publish();
+
+    int addSinglePointMarker(int m_id, const KDL::Vector &pos, double r, double g, double b, double a, double size, const std::string &frame_id);
+    int addVectorMarker(int m_id, const KDL::Vector &v1, const KDL::Vector &v2, double r, double g, double b, double size, const std::string &frame_id);
+    int addCapsule(int m_id, const KDL::Frame &fr, double length, double radius, const std::string &frame_id);
+    void addEraseMarkers(int from, int to);
+
+protected:
+    ros::NodeHandle nh_;
+    ros::Publisher pub_;
+    visualization_msgs::MarkerArray marker_array_;
+};
 
 #endif	// MARKER_PUBLISHER_H
 

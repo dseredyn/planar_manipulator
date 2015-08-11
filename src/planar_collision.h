@@ -45,6 +45,10 @@
 
     void distanceLines(const KDL::Vector &l1A, const KDL::Vector &l1B, const KDL::Vector &l2A, const KDL::Vector &l2B, double &distance, KDL::Vector &p_pt1, KDL::Vector &p_pt2);
 
+    bool checkCollision(const boost::shared_ptr<self_collision::Collision> &col1, const boost::shared_ptr<self_collision::Collision> &col2,
+                        const KDL::Frame &T_B_L1, const KDL::Frame &T_B_L2, double activation_dist,
+                        double &dist, KDL::Vector &p1_B, KDL::Vector &p2_B, KDL::Vector &n1_B, KDL::Vector &n2_B);
+
     void getCollisionPairs(const boost::shared_ptr<self_collision::CollisionModel> &col_model, const std::vector<KDL::Frame > &links_fk, double activation_dist, std::vector<CollisionInfo> &link_collisions);
 
 #endif  // PLANAR_COLLISION_H__

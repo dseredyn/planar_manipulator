@@ -14,8 +14,11 @@ include_directories(${catkin_INCLUDE_DIRS} ${Eigen_INCLUDE_DIRS} ${USE_OROCOS_IN
 
 add_executable(planar_sim src/planar_sim.cpp src/planar5_dyn_model.cpp src/kin_model.cpp src/marker_publisher.cpp src/task_col.cpp src/task_hand.cpp src/task_jlc.cpp src/planar_collision.cpp)
 add_executable(planar_sim_planer src/planar_sim_planer.cpp src/planar5_dyn_model.cpp src/kin_model.cpp src/marker_publisher.cpp src/task_col.cpp src/task_hand.cpp src/task_jlc.cpp src/planar_collision.cpp)
+add_executable(planar_sim_planer_rrt src/planar_sim_planer_rrt.cpp src/planar5_dyn_model.cpp src/kin_model.cpp src/marker_publisher.cpp src/task_col.cpp src/task_hand.cpp src/task_jlc.cpp src/planar_collision.cpp)
+
 target_link_libraries(planar_sim ${catkin_LIBRARIES})
 target_link_libraries(planar_sim_planer ${catkin_LIBRARIES})
+target_link_libraries(planar_sim_planer_rrt ${catkin_LIBRARIES})
 
 catkin_package()
 
