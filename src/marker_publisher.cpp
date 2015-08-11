@@ -74,7 +74,7 @@ int MarkerPublisher::addSinglePointMarker(int m_id, const KDL::Vector &pos, doub
     return m_id + 1;
 }
 
-int MarkerPublisher::addVectorMarker(int m_id, const KDL::Vector &v1, const KDL::Vector &v2, double r, double g, double b, double size, const std::string &frame_id) {
+int MarkerPublisher::addVectorMarker(int m_id, const KDL::Vector &v1, const KDL::Vector &v2, double r, double g, double b, double a, double size, const std::string &frame_id) {
     visualization_msgs::Marker marker;
     marker.header.frame_id = frame_id;
     marker.header.stamp = ros::Time();
@@ -101,7 +101,7 @@ int MarkerPublisher::addVectorMarker(int m_id, const KDL::Vector &v1, const KDL:
     marker.scale.x = size;
     marker.scale.y = 2.0 * size;
     marker.scale.z = 0.0;
-    marker.color.a = 1.0;
+    marker.color.a = a;
     marker.color.r = r;
     marker.color.g = g;
     marker.color.b = b;

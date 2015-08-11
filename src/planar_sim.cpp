@@ -50,6 +50,7 @@
 #include "task_hand.h"
 #include "task_jlc.h"
 #include "planar_collision.h"
+#include "random_uniform.h"
 
 class TestDynamicModel {
     ros::NodeHandle nh_;
@@ -69,10 +70,6 @@ public:
     }
 
     ~TestDynamicModel() {
-    }
-
-    double randomUniform(double min, double max) {
-        return min + (max - min) * (double)rand() / (double)RAND_MAX;
     }
 
     void publishJointState(const Eigen::VectorXd &q, const std::vector<std::string > &joint_names) {

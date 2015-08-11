@@ -51,20 +51,19 @@
 #include "task_hand.h"
 #include "task_jlc.h"
 #include "planar_collision.h"
-
-double randomUniform(double min, double max) {
-    return min + (max - min) * (double)rand() / (double)RAND_MAX;
-}
+#include "random_uniform.h"
+#include "reachability_map.h"
 
 class RRTStar {
 public:
-    RRTStar(boost::function<bool(const Eigen::VectorXd &x)> func) :
-        func_(func)
+    RRTStar(boost::function<bool(const Eigen::VectorXd &x)> collision_func, boost::function<double(const Eigen::VectorXd &x, const Eigen::VectorXd &y)> costLine_func) :
+        collision_func_(collision_func),
+        costLine_func_(costLine_func)
     {
     }
 
     bool isStateValid(const Eigen::VectorXd &x) const {
-        return !func_(x);
+        return !collision_func_(x);
     }
 
     bool sampleFree(Eigen::VectorXd &sample_free) const {
@@ -136,9 +135,14 @@ public:
         }
     }
 
-    double costLine(int x1_idx, int x2_idx) const {
-        return (V_.find(x1_idx)->second - V_.find(x2_idx)->second).norm();
+    double costLine(const Eigen::VectorXd &x1, const Eigen::VectorXd &x2) const {
+        return costLine_func_(x1, x2);
     }
+
+    double costLine(int x1_idx, int x2_idx) const {
+        return costLine(V_.find(x1_idx)->second, V_.find(x2_idx)->second);
+    }
+
 
     double cost(int q_idx) const {
         std::map<int, int >::const_iterator e_it = E_.find(q_idx);
@@ -149,9 +153,25 @@ public:
         return costLine(q_idx, q_parent_idx) + cost(q_parent_idx);
     }
 
-    void plan(const Eigen::VectorXd &start, const Eigen::VectorXd &goal) {
+    void getPath(int q_idx, std::list<int > &path) {
+        std::map<int, int >::const_iterator e_it = E_.find(q_idx);
+        if (e_it == E_.end()) {
+            path.clear();
+            path.push_back(q_idx);
+        }
+        else {
+            int q_parent_idx = e_it->second;
+            getPath(q_parent_idx, path);
+            path.push_back(q_idx);
+        }
+    }
+
+    void plan(const Eigen::VectorXd &start, const Eigen::VectorXd &goal, std::list<Eigen::VectorXd > &path) {
+        double goal_tolerance = 0.05;
+
         V_.clear();
         E_.clear();
+        path.clear();
 
         double steer_dist = 0.2;
         double near_dist = 0.4;
@@ -168,6 +188,7 @@ public:
             else {
                 if (!sampleFree(q_rand)) {
                     std::cout << "ERROR: RRTStar::plan: could not sample free space" << std::endl;
+                    return;
                 }
             }
 
@@ -177,6 +198,9 @@ public:
             steer(q_nearest, q_rand, steer_dist, q_new);
 
             if (collisionFree(q_nearest, q_new)) {
+
+                bool isGoal = (q_new - goal).norm() < goal_tolerance;
+
                 std::list<int > q_near_idx_list;
                 near(q_new, near_dist, q_near_idx_list);
                 double min_cost = cost(q_nearest_idx);
@@ -193,21 +217,49 @@ public:
                 q_new_idx++;
                 V_[q_new_idx] = q_new;
                 E_[q_new_idx] = min_idx;
+
+
+                double cost_q_new = cost(q_new_idx);
+                for (std::list<int >::const_iterator qi_it = q_near_idx_list.begin(); qi_it != q_near_idx_list.end(); qi_it++) {
+                    int q_near_idx = *qi_it;
+                    Eigen::VectorXd q_near = V_.find(q_near_idx)->second;
+                    if (cost_q_new + costLine(q_new, q_near) < cost(q_near_idx)) {
+                        bool col_free = collisionFree(q_new, q_near);
+                        if (col_free) {
+                                int q_parent_idx = E_[q_near_idx];
+                                E_[q_near_idx] = q_new_idx;
+                        }
+                    }
+                }
             }
+        }
+
+        double min_cost = 0.0;
+        int min_goal_idx = -1;
+        for (std::map<int, Eigen::VectorXd >::const_iterator v_it = V_.begin(); v_it != V_.end(); v_it++) {
+            double dist = (v_it->second - goal).norm();
+            double c = cost(v_it->first);
+            if (dist < goal_tolerance && (min_goal_idx < 0 || min_cost > c)) {
+                min_cost = c;
+                min_goal_idx = v_it->first;
+            }
+        }
+
+        std::list<int > idx_path;
+        getPath(min_goal_idx, idx_path);
+        for (std::list<int >::const_iterator p_it = idx_path.begin(); p_it != idx_path.end(); p_it++) {
+            path.push_back(V_.find(*p_it)->second);
         }
     }
 
-    int publishMarker(MarkerPublisher &markers_pub, int m_id) const {
+    int addTreeMarker(MarkerPublisher &markers_pub, int m_id) const {
         std::vector<std::pair<KDL::Vector, KDL::Vector > > vec_arr;
         for (std::map<int, int >::const_iterator e_it = E_.begin(); e_it != E_.end(); e_it++) {
             const Eigen::VectorXd &x1 = V_.find(e_it->first)->second;
             const Eigen::VectorXd &x2 = V_.find(e_it->second)->second;
             KDL::Vector pos1(x1(0), x1(1), 0), pos2(x2(0), x2(1), 0);
             vec_arr.push_back( std::make_pair(pos1, pos2) );
-            m_id = markers_pub.addVectorMarker(m_id, pos1, pos2, 0, 1, 0, 0.01, "base");
-//            m_id = publishLineMarker(markers_pub, m_id, pos1, pos2, 0, 1, 0);
-//            ros::spinOnce();
-//            ros::Duration(0.001).sleep();
+            m_id = markers_pub.addVectorMarker(m_id, pos1, pos2, 0, 0.7, 0, 0.5, 0.01, "base");
         }
 
         const Eigen::VectorXd &xs = V_.find(0)->second;
@@ -217,7 +269,8 @@ public:
     }
 
 protected:
-    boost::function<bool(const Eigen::VectorXd &x)> func_;
+    boost::function<bool(const Eigen::VectorXd &x)> collision_func_;
+    boost::function<double(const Eigen::VectorXd &x, const Eigen::VectorXd &y)> costLine_func_;
     std::map<int, Eigen::VectorXd > V_;
     std::map<int, int > E_;
 };
@@ -312,6 +365,10 @@ public:
         }
 
         return false;
+    }
+
+    double costLine(const Eigen::VectorXd &x1, const Eigen::VectorXd &x2, const ReachabilityMap &r_map) const {
+        return (x1-x2).norm() * (2.0 - r_map.getValue(x1) - r_map.getValue(x2));
     }
 
     void spin() {
@@ -410,6 +467,34 @@ public:
             max_trq[q_idx] = 10.0;
         }
 
+//        ros::Duration(1.0).sleep();
+
+        //
+        // reachability map for end-effector
+        //
+
+        ReachabilityMap r_map(0.1, 2);
+        r_map.generate(kin_model, col_model, effector_name, ndof, lower_limit, upper_limit);
+
+//*
+        // TEST: reachability map
+        int m_id = 3000;
+        for (double x = -1.8; x < 1.8; x += 0.1) {
+            for (double y = -1.8; y < 1.8; y += 0.1) {
+                Eigen::VectorXd xs(2);
+                xs(0) = x;
+                xs(1) = y;
+                double val = r_map.getValue(xs);
+                m_id = markers_pub_.addSinglePointMarker(m_id, KDL::Vector(xs(0), xs(1), 0), 0, 0, 1, 1, 0.1*val, "base");
+            }
+        }
+        markers_pub_.publish();
+        ros::spinOnce();
+        ros::Duration(0.01).sleep();
+//        ros::Duration(1).sleep();
+//        return;
+//*/
+
         //
         // Tasks declaration
         //
@@ -419,9 +504,9 @@ public:
 
         Task_HAND task_HAND(ndof, 3);
 
+        RRTStar rrt( boost::bind(&TestDynamicModel::checkCollision, this, _1, links_fk, col_model), boost::bind(&TestDynamicModel::costLine, this, _1, _2, r_map) );
 
-        RRTStar rrt( boost::bind(&TestDynamicModel::checkCollision, this, _1, links_fk, col_model) );
-
+        // TEST: RRT
         while (ros::ok()) {
 
             Eigen::VectorXd xs(2), xe(2);
@@ -434,13 +519,17 @@ public:
                 continue;
             }
 
-            rrt.plan(xs, xe);
+            std::list<Eigen::VectorXd > path;
+            rrt.plan(xs, xe, path);
+
             int m_id = 100;
-            m_id = rrt.publishMarker(markers_pub_, m_id);
+            m_id = rrt.addTreeMarker(markers_pub_, m_id);
             m_id = markers_pub_.addSinglePointMarker(m_id, KDL::Vector(xe(0), xe(1), 0), 0, 0, 1, 1, 0.05, "base");
-
+            for (std::list<Eigen::VectorXd >::const_iterator it1 = path.begin(), it2=++path.begin(); it2 != path.end(); it1++, it2++) {
+                KDL::Vector pos1((*it1)(0), (*it1)(1), 0), pos2((*it2)(0), (*it2)(1), 0);
+                m_id = markers_pub_.addVectorMarker(m_id, pos1, pos2, 1, 1, 1, 1, 0.01, "base");
+            }
             markers_pub_.addEraseMarkers(m_id, 2000);
-
             markers_pub_.publish();
             ros::spinOnce();
             ros::Duration(0.001).sleep();
@@ -501,20 +590,21 @@ public:
                         std::cout << "ERROR: could not find valid pose" << std::endl;
                         return;
                     }
+                    publishTransform(r_HAND_target, "effector_dest");
+
                     // get the current pose
                     Eigen::VectorXd xs(2);
                     xs(0) = links_fk[effector_idx].p.x();
                     xs(1) = links_fk[effector_idx].p.y();
-                    rrt.plan(xs, xe);
+                    std::list<Eigen::VectorXd > path;
+                    rrt.plan(xs, xe, path);
 
                     // visualize the planned graph
                     int m_id = 100;
-                    m_id = rrt.publishMarker(markers_pub_, m_id);
+                    m_id = rrt.addTreeMarker(markers_pub_, m_id);
                     m_id = markers_pub_.addSinglePointMarker(m_id, KDL::Vector(xe(0), xe(1), 0), 0, 0, 1, 1, 0.05, "base");
-                    ros::spinOnce();
-                    ros::Duration(0.001).sleep();
-
                     markers_pub_.addEraseMarkers(m_id, 2000);
+                    markers_pub_.publish();
                     ros::spinOnce();
                     ros::Duration(0.001).sleep();
 
@@ -538,7 +628,6 @@ public:
 
                 pose_reached  = false;
 
-                publishTransform(r_HAND_target, "effector_dest");
                 loop_counter = 0;
             }
             loop_counter += 1;
@@ -561,12 +650,9 @@ public:
             for (int q_idx = 0; q_idx < ndof; q_idx++) {
                 torque_COL[q_idx] = 0.0;
             }
-            int m_id = 1000;
             Eigen::MatrixXd N_COL(Eigen::MatrixXd::Identity(ndof, ndof));
 
             task_COL.compute(q, dq, dyn_model.invI, links_fk, link_collisions, torque_COL, N_COL);
-
-            markers_pub_.addEraseMarkers(m_id, 1030);
 
             //
             // effector task
@@ -625,6 +711,7 @@ public:
                 publishJointState(q, joint_names);
                 int m_id = 0;
                 m_id = publishRobotModelVis(m_id, col_model, links_fk);
+                markers_pub_.publish();
                 ros::Time last_time = ros::Time::now();
             }
             ros::spinOnce();

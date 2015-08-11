@@ -29,31 +29,11 @@
 // Author: Dawid Seredynski
 //
 
-#ifndef MARKER_PUBLISHER_H
-#define MARKER_PUBLISHER_H
+#include "random_uniform.h"
 
-#include "ros/ros.h"
-#include "visualization_msgs/MarkerArray.h"
-#include <kdl/frames.hpp>
+#include <stdlib.h>
 
-class MarkerPublisher {
-public:
-    MarkerPublisher(ros::NodeHandle &nh);
-    ~MarkerPublisher();
-
-    void publish();
-
-    int addSinglePointMarker(int m_id, const KDL::Vector &pos, double r, double g, double b, double a, double size, const std::string &frame_id);
-    int addVectorMarker(int m_id, const KDL::Vector &v1, const KDL::Vector &v2, double r, double g, double b, double a, double size, const std::string &frame_id);
-    int addCapsule(int m_id, const KDL::Frame &fr, double length, double radius, const std::string &frame_id);
-    void addEraseMarkers(int from, int to);
-
-protected:
-    ros::NodeHandle nh_;
-    ros::Publisher pub_;
-    visualization_msgs::MarkerArray marker_array_;
-};
-
-#endif	// MARKER_PUBLISHER_H
-
+double randomUniform(double min, double max) {
+    return min + (max - min) * (double)rand() / (double)RAND_MAX;
+}
 

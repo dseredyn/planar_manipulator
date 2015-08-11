@@ -29,31 +29,36 @@
 // Author: Dawid Seredynski
 //
 
-#ifndef MARKER_PUBLISHER_H
-#define MARKER_PUBLISHER_H
+#ifndef REACHABILITY_MAP_H__
+#define REACHABILITY_MAP_H__
 
-#include "ros/ros.h"
-#include "visualization_msgs/MarkerArray.h"
-#include <kdl/frames.hpp>
+#include "Eigen/Dense"
 
-class MarkerPublisher {
+#include "reachability_map.h"
+#include <collision_convex_model/collision_convex_model.h>
+#include "kin_model.h"
+
+class ReachabilityMap {
 public:
-    MarkerPublisher(ros::NodeHandle &nh);
-    ~MarkerPublisher();
+    ReachabilityMap(double voxel_size, int dim);
 
-    void publish();
+    ~ReachabilityMap();
 
-    int addSinglePointMarker(int m_id, const KDL::Vector &pos, double r, double g, double b, double a, double size, const std::string &frame_id);
-    int addVectorMarker(int m_id, const KDL::Vector &v1, const KDL::Vector &v2, double r, double g, double b, double a, double size, const std::string &frame_id);
-    int addCapsule(int m_id, const KDL::Frame &fr, double length, double radius, const std::string &frame_id);
-    void addEraseMarkers(int from, int to);
+    void generate(const KinematicModel &kin_model, const boost::shared_ptr<self_collision::CollisionModel> &col_model, const std::string &effector_name, int ndof, const Eigen::VectorXd &lower_limit, const Eigen::VectorXd &upper_limit);
+
+    double getValue(const Eigen::VectorXd &x) const;
 
 protected:
-    ros::NodeHandle nh_;
-    ros::Publisher pub_;
-    visualization_msgs::MarkerArray marker_array_;
+
+    int getIndex(const Eigen::VectorXd &x) const;
+
+    double voxel_size_;
+    int dim_;
+    int max_value_;
+    Eigen::VectorXd ep_min_, ep_max_;
+    std::vector<int > r_map_;
+    std::vector<int > steps_;
 };
 
-#endif	// MARKER_PUBLISHER_H
-
+#endif  // REACHABILITY_MAP_H__
 
