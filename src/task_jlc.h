@@ -41,8 +41,7 @@ public:
 
     ~Task_JLC();
 
-    double jointLimitTrq(double hl, double ll, double ls,
-        double r_max, double q, double &out_limit_activation);
+    double jointLimitTrq(double hl, double ll, double ls, double r_max, double q, double &out_limit_activation);
 
     void compute(const Eigen::VectorXd &q, const Eigen::VectorXd &dq, const Eigen::MatrixXd &I, Eigen::VectorXd &torque, Eigen::MatrixXd &N);
 

@@ -51,6 +51,12 @@
 
     double Task_JLC::jointLimitTrq(double hl, double ll, double ls,
         double r_max, double q, double &out_limit_activation) {
+        if (q > hl) {
+            q = hl;
+        }
+        else if (q < ll) {
+            q = ll;
+        }
         if (q > (hl - ls)) {
             out_limit_activation = fabs((q - hl + ls) / ls);
             return -1 * ((q - hl + ls) / ls) * ((q - hl + ls) / ls) * r_max;

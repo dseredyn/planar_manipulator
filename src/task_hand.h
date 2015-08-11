@@ -42,7 +42,7 @@ public:
     ~Task_HAND();
 
     void compute(const Eigen::VectorXd &T_diff, const Eigen::VectorXd &Kc, const Eigen::VectorXd &Dxi, const Eigen::MatrixXd &J, const Eigen::VectorXd &dq, const Eigen::MatrixXd &invI,
-                    Eigen::VectorXd &torque);
+                    Eigen::VectorXd &torque, Eigen::MatrixXd &N);
 
 protected:
     int ndof_, dim_;

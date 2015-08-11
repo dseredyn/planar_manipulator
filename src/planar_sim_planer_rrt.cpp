@@ -54,6 +54,112 @@
 #include "random_uniform.h"
 #include "reachability_map.h"
 
+class SphereQ {
+public:
+    SphereQ(const Eigen::VectorXd &center, double radius) :
+        center_(center),
+        radius_(radius)
+    {
+    }
+
+    SphereQ(const SphereQ &s) :
+        center_(s.center_),
+        radius_(s.radius_)
+    {
+    }
+
+    Eigen::VectorXd center_;
+    double radius_;
+};
+
+class Task_QA {
+public:
+    Task_QA(int ndof) :
+        ndof_(ndof)
+    {
+    }
+
+    ~Task_QA() {
+    }
+
+    void compute(const Eigen::VectorXd &q, const Eigen::VectorXd &dq, const Eigen::MatrixXd &I, const std::vector<SphereQ> &spheres, Eigen::VectorXd &torque, Eigen::MatrixXd &N) {
+
+            double activation = 0.0;
+            double max_force = 2.0;
+
+            for (int q_idx = 0; q_idx < ndof_; q_idx++) {
+                torque(q_idx) = 0.0;
+            }
+
+            for (std::vector<SphereQ>::const_iterator it = spheres.begin(); it != spheres.end(); it++) {
+                Eigen::VectorXd v = q - it->center_;
+                double norm = v.norm();
+
+//                torque += v / norm / norm / static_cast<double >(spheres.size());
+/*                if ( norm < it->radius_ ) {
+                    double f = (it->radius_ - norm) / it->radius_;
+                    torque += v / norm * max_force * f * f;// / static_cast<double >(spheres.size());
+                    if (f*1.0 > activation) {
+                        activation = f*1.0;
+                    }
+                }
+*/
+            }
+
+            double q_norm = q.norm();
+            for (int q_idx = 0; q_idx < ndof_; q_idx++) {
+                if (q(q_idx) > 0.001)
+                    torque(q_idx) = q(q_idx) / q_norm / q_norm * 0.1;
+                else
+                    torque(q_idx) = q(q_idx) / q_norm / q_norm * 0.1;
+            }
+
+/*            double max_cmd_torque = 0.0;
+            for (int q_idx = 0; q_idx < ndof_; q_idx++) {
+                if (fabs(torque(q_idx)) > max_cmd_torque) {
+                    max_cmd_torque = fabs(torque(q_idx));
+                }
+            }
+            if (max_cmd_torque > max_force) {
+                torque = torque / max_cmd_torque * max_force;
+            }
+*/
+            if (activation > 1.0) {
+                activation = 1.0;
+            }
+
+            Eigen::VectorXd activation_vec(ndof_);
+            for (int q_idx = 0; q_idx < ndof_; q_idx++) {
+                activation_vec(q_idx) = 1.0;
+//                activation_vec(q_idx) = activation;
+/*                activation_vec(q_idx) = torque(q_idx) / max_force * 2.0;
+                if (activation_vec(q_idx) > 1.0) {
+                    activation_vec(q_idx) = 1.0;
+                }
+*/
+            }
+
+/*
+            tmpNN_ = k_.asDiagonal();
+            es_.compute(tmpNN_, I);
+            q_ = es_.eigenvectors().inverse();
+            k0_ = es_.eigenvalues();
+
+            tmpNN_ = k0_.cwiseSqrt().asDiagonal();
+
+            d_.noalias() = 2.0 * q_.adjoint() * 0.7 * tmpNN_ * q_;
+
+            torque.noalias() -= d_ * dq;
+*/
+            // calculate jacobian (the activation function)
+            Eigen::MatrixXd J = activation_vec.asDiagonal();
+            N = Eigen::MatrixXd::Identity(ndof_, ndof_) - (J.transpose() * J);
+    }
+
+protected:
+    int ndof_;
+};
+
 class RRTStar {
 public:
     RRTStar(boost::function<bool(const Eigen::VectorXd &x)> collision_func, boost::function<double(const Eigen::VectorXd &x, const Eigen::VectorXd &y)> costLine_func) :
@@ -283,6 +389,8 @@ class TestDynamicModel {
 
     const double PI;
 
+    std::list<Eigen::VectorXd > penalty_points_;
+
 public:
     TestDynamicModel() :
         nh_(),
@@ -368,7 +476,55 @@ public:
     }
 
     double costLine(const Eigen::VectorXd &x1, const Eigen::VectorXd &x2, const ReachabilityMap &r_map) const {
+/*        double min_dist1 = 100000.0;
+        double min_dist2 = 100000.0;
+//        std::cout << penalty_points_.size() << std::endl;
+        for (std::list<Eigen::VectorXd >::const_iterator it = penalty_points_.begin(); it != penalty_points_.end(); it++) {
+            double dist1 = ((*it) - x1).norm();
+            double dist2 = ((*it) - x2).norm();
+            if (dist1 < min_dist1) {
+                min_dist1 = dist1;
+            }
+            if (dist2 < min_dist2) {
+                min_dist2 = dist2;
+            }
+        }
+        double dist_range = 0.2;
+        min_dist1 /= dist_range;
+        min_dist2 /= dist_range;
+        if (min_dist1 > 1.0) {
+            min_dist1 = 1.0;
+        }
+        if (min_dist2 > 1.0) {
+            min_dist2 = 1.0;
+        }
+*/
+//        return (x1-x2).norm() * (2.0 - r_map.getValue(x1) - r_map.getValue(x2) + 2.0 - min_dist1 - min_dist2);
+//        return (x1-x2).norm() * (2.0 - min_dist1 - min_dist2);
         return (x1-x2).norm() * (2.0 - r_map.getValue(x1) - r_map.getValue(x2));
+    }
+
+    void getPointOnPath(const std::list<Eigen::VectorXd > &path, double f, Eigen::VectorXd &x) const {
+        double length = 0.0;
+        for (std::list<Eigen::VectorXd >::const_iterator it1 = path.begin(), it2=++path.begin(); it2 != path.end(); it1++, it2++) {
+            double dist = ((*it1) - (*it2)).norm();
+            length += dist;
+        }
+
+        double pos = length * f;
+
+        for (std::list<Eigen::VectorXd >::const_iterator it1 = path.begin(), it2=++path.begin(); it2 != path.end(); it1++, it2++) {
+            Eigen::VectorXd v = ((*it2) - (*it1));
+            double dist = v.norm();
+            if (pos - dist > 0) {
+                pos -= dist;
+            }
+            else {
+                x = (*it1) + pos * v / dist;
+                return;
+            }
+        }
+        x = (*(--path.end()));
     }
 
     void spin() {
@@ -476,7 +632,7 @@ public:
         ReachabilityMap r_map(0.1, 2);
         r_map.generate(kin_model, col_model, effector_name, ndof, lower_limit, upper_limit);
 
-//*
+/*
         // TEST: reachability map
         int m_id = 3000;
         for (double x = -1.8; x < 1.8; x += 0.1) {
@@ -501,11 +657,13 @@ public:
         Task_JLC task_JLC(lower_limit, upper_limit, limit_range, max_trq);
         double activation_dist = 0.05;
         Task_COL task_COL(ndof, activation_dist, kin_model, col_model);
-
         Task_HAND task_HAND(ndof, 3);
+        Task_QA task_QA(ndof);
+
+        boost::shared_ptr<Task_JLC > ptask_JLC2(new Task_JLC(lower_limit, upper_limit, limit_range, max_trq));
 
         RRTStar rrt( boost::bind(&TestDynamicModel::checkCollision, this, _1, links_fk, col_model), boost::bind(&TestDynamicModel::costLine, this, _1, _2, r_map) );
-
+/*
         // TEST: RRT
         while (ros::ok()) {
 
@@ -538,16 +696,28 @@ public:
         }
 
         return;
-
+*/
 
         // loop variables
         ros::Time last_time = ros::Time::now();
         KDL::Frame r_HAND_target;
-        r_HAND_target = KDL::Frame(KDL::Rotation::RotZ(randomUniform(-PI, PI)), KDL::Vector(randomUniform(0,2), randomUniform(-1,1), 0));
-        int loop_counter = 0;
+//        r_HAND_target = KDL::Frame(KDL::Rotation::RotZ(randomUniform(-PI, PI)), KDL::Vector(randomUniform(0,2), randomUniform(-1,1), 0));
+        int loop_counter = 10000;
         ros::Rate loop_rate(500);
         bool pose_reached  = false;
-        int try_idx = 0;
+        int try_idx = 50;
+        std::list<Eigen::VectorXd > target_path;
+        std::vector<SphereQ > spheres;
+        std::list<Eigen::VectorXd > realized_path;
+
+        std::vector<Eigen::VectorXd > eig_COL_vec(4);
+        int eig_COL_vec_idx = 0;
+
+        std::vector<Eigen::VectorXd > torque_COL_vec(4);
+        int torque_COL_vec_idx = 0;
+
+        Eigen::VectorXd const_torque(ndof);
+
         while (ros::ok()) {
 
             // calculate forward kinematics for all links
@@ -557,10 +727,9 @@ public:
             // calculate inertia matrix for whole body
             dyn_model.computeM(q);
 
-
-            if (loop_counter > 1000) {
-                if (pose_reached || try_idx > 40) {
-                    if (try_idx > 40) {
+            if (loop_counter > 1500 || pose_reached) {
+                if (pose_reached || try_idx > 3) {
+                    if (try_idx > 3) {
                         std::cout << "Could not reach the pose" << std::endl;
                         publishJointState(q, joint_names);
                         int m_id = 0;
@@ -592,17 +761,32 @@ public:
                     }
                     publishTransform(r_HAND_target, "effector_dest");
 
+//                    ptask_JLC2.reset(new Task_JLC(lower_limit, upper_limit, limit_range, max_trq));
+                    for (int q_idx = 0; q_idx < ndof; q_idx++) {
+                        const_torque(q_idx) = 0.0;
+                    }
+
+                    realized_path.clear();
+                    spheres.clear();
+                    penalty_points_.clear();
+
                     // get the current pose
                     Eigen::VectorXd xs(2);
                     xs(0) = links_fk[effector_idx].p.x();
                     xs(1) = links_fk[effector_idx].p.y();
                     std::list<Eigen::VectorXd > path;
                     rrt.plan(xs, xe, path);
+                    target_path = path;
 
                     // visualize the planned graph
                     int m_id = 100;
                     m_id = rrt.addTreeMarker(markers_pub_, m_id);
                     m_id = markers_pub_.addSinglePointMarker(m_id, KDL::Vector(xe(0), xe(1), 0), 0, 0, 1, 1, 0.05, "base");
+                    for (std::list<Eigen::VectorXd >::const_iterator it1 = path.begin(), it2=++path.begin(); it2 != path.end(); it1++, it2++) {
+                        KDL::Vector pos1((*it1)(0), (*it1)(1), 0), pos2((*it2)(0), (*it2)(1), 0);
+                        m_id = markers_pub_.addVectorMarker(m_id, pos1, pos2, 1, 1, 1, 1, 0.02, "base");
+                    }
+
                     markers_pub_.addEraseMarkers(m_id, 2000);
                     markers_pub_.publish();
                     ros::spinOnce();
@@ -617,12 +801,103 @@ public:
                     getchar();
                 }
                 else {
+//                    for (std::list<Eigen::VectorXd >::const_iterator it = realized_path.begin(); it != realized_path.end(); it++) {
+//                        SphereQ sq( (*it), 60.0/180.0 * PI);
+//                        spheres.push_back(sq);
+//                    }
+                    realized_path.clear();
+
+                    Eigen::VectorXd mean_torque(ndof);
+                    for (int q_idx = 0; q_idx < ndof; q_idx++) {
+                        mean_torque(q_idx) = 0.0;
+                    }
+                    for (int v_idx = 0; v_idx < torque_COL_vec.size(); v_idx++) {
+                        mean_torque += torque_COL_vec[v_idx];
+                    }
+
+                    mean_torque /= static_cast<double >(torque_COL_vec.size());
+
+                    Eigen::VectorXd q_copy(q);
+                    std::cout << mean_torque.transpose() << std::endl;
                     // another try
                     for (int q_idx = 0; q_idx < ndof; q_idx++) {
                         q[q_idx] = saved_q[q_idx];
                         dq[q_idx] = saved_dq[q_idx];
                         ddq[q_idx] = saved_ddq[q_idx];
                     }
+
+                    const_torque = 0.1 * mean_torque;
+/*
+                    // additional joint limit
+                    Eigen::VectorXd lower_limit_tmp(ndof), upper_limit_tmp(ndof), limit_range_tmp(ndof), max_trq_tmp(ndof);
+                    for (int q_idx = 0; q_idx < ndof; q_idx++) {
+                        if (min_eig(q_idx) < 0.999) {
+                            if (q_copy(q_idx) - lower_limit(q_idx) > upper_limit(q_idx) - q_copy(q_idx)) {
+                                lower_limit_tmp(q_idx) = lower_limit(q_idx);
+                                upper_limit_tmp(q_idx) = q_copy(q_idx);
+                            }
+                            else {
+                                lower_limit_tmp(q_idx) = q_copy(q_idx);
+                                upper_limit_tmp(q_idx) = upper_limit(q_idx);
+                            }
+                        }
+                        else {
+                            lower_limit_tmp(q_idx) = lower_limit(q_idx);
+                            upper_limit_tmp(q_idx) = upper_limit(q_idx);
+                        }
+                        std::cout << "limit " << q_idx << " " << lower_limit_tmp(q_idx) << " (" << lower_limit(q_idx) << ")   " << upper_limit_tmp(q_idx) << " (" << upper_limit(q_idx) << ")" << std::endl;
+                        limit_range[q_idx] = 10.0/180.0*PI;
+                        max_trq[q_idx] = 10.0;
+                    }
+                    std::cout << "q " << q.transpose() << std::endl;
+                    ptask_JLC2.reset(new Task_JLC(lower_limit_tmp, upper_limit_tmp, limit_range_tmp, max_trq_tmp));
+*/
+//                    for (int q_idx = 0; q_idx < ndof; q_idx++) {
+//                        if (min_eig(q_idx) < 0.999) {
+//                            dq(q_idx) = -2.0 * q_copy(q_idx);
+//                        }
+//                    }
+
+/*
+                    if (target_path.size() > 2) {
+                        // add penalty for the last path
+                        for (std::list<Eigen::VectorXd >::const_iterator it = ++target_path.begin(); it != --target_path.end(); it++) {
+                            penalty_points_.push_back( (*it) );
+                        }
+                    }
+                    std::cout << "penalty_points " << penalty_points_.size() << std::endl;
+
+                    Eigen::VectorXd xe(2);
+                    xe(0) = r_HAND_target.p.x();
+                    xe(1) = r_HAND_target.p.y();
+
+                    // get the current pose
+                    // calculate forward kinematics for all links
+                    for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
+                        kin_model.calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), q);
+                    }
+
+                    Eigen::VectorXd xs(2);
+                    xs(0) = links_fk[effector_idx].p.x();
+                    xs(1) = links_fk[effector_idx].p.y();
+                    std::list<Eigen::VectorXd > path;
+                    rrt.plan(xs, xe, path);
+                    target_path = path;
+
+                    // visualize the planned graph
+                    int m_id = 100;
+                    m_id = rrt.addTreeMarker(markers_pub_, m_id);
+                    m_id = markers_pub_.addSinglePointMarker(m_id, KDL::Vector(xe(0), xe(1), 0), 0, 0, 1, 1, 0.05, "base");
+                    for (std::list<Eigen::VectorXd >::const_iterator it1 = path.begin(), it2=++path.begin(); it2 != path.end(); it1++, it2++) {
+                        KDL::Vector pos1((*it1)(0), (*it1)(1), 0), pos2((*it2)(0), (*it2)(1), 0);
+                        m_id = markers_pub_.addVectorMarker(m_id, pos1, pos2, 1, 1, 1, 1, 0.02, "base");
+                    }
+
+                    markers_pub_.addEraseMarkers(m_id, 2000);
+                    markers_pub_.publish();
+                    ros::spinOnce();
+                    ros::Duration(0.001).sleep();
+*/
                     try_idx++;
                 }
 
@@ -631,6 +906,17 @@ public:
                 loop_counter = 0;
             }
             loop_counter += 1;
+
+            if (realized_path.size() == 0) {
+                if ((q-saved_q).norm() > 10.0/180.0*PI) {
+                    realized_path.push_back(q);
+                }
+            }
+            else {
+                if ((q-realized_path.back()).norm() > 10.0/180.0*PI) {
+                    realized_path.push_back(q);
+                }
+            }
 
 
             //
@@ -654,20 +940,31 @@ public:
 
             task_COL.compute(q, dq, dyn_model.invI, links_fk, link_collisions, torque_COL, N_COL);
 
+            Eigen::VectorXd pt(2);
+            getPointOnPath(target_path, static_cast<double >(loop_counter)/800.0, pt);
+            markers_pub_.addSinglePointMarker(50, KDL::Vector(pt(0), pt(1), 0), 1, 0, 0, 1, 0.2, "base");
+
+
             //
             // effector task
             //
             Eigen::VectorXd torque_HAND(ndof);
+            Eigen::MatrixXd N_HAND(ndof, ndof);
 
             KDL::Frame T_B_E = links_fk[effector_idx];
             KDL::Frame r_HAND_current = T_B_E;
-            KDL::Twist diff = KDL::diff(r_HAND_current, r_HAND_target, 1.0);
+
+            KDL::Frame target_pos(KDL::Vector(pt(0), pt(1), 0));
+            KDL::Twist diff = KDL::diff(r_HAND_current, target_pos, 1.0);
+//            KDL::Twist diff = KDL::diff(r_HAND_current, r_HAND_target, 1.0);
             Eigen::VectorXd r_HAND_diff(3);
             r_HAND_diff[0] = diff[0];
             r_HAND_diff[1] = diff[1];
             r_HAND_diff[2] = diff[5];
 
-            if (diff.vel.Norm() < 0.06 && diff.rot.Norm() < 5.0/180.0 * PI) {
+            KDL::Twist diff_goal = KDL::diff(r_HAND_current, r_HAND_target, 1.0);
+
+            if (diff_goal.vel.Norm() < 0.06) {// && diff.rot.Norm() < 5.0/180.0 * PI) {
 //                std::cout << "Pose reached " << diff.vel.Norm() << " " << diff.rot.Norm() << std::endl;
                 pose_reached  = true;
                 continue;
@@ -676,7 +973,7 @@ public:
             Eigen::VectorXd Kc(3);
             Kc[0] = 10.0;
             Kc[1] = 10.0;
-            Kc[2] = 1.0;
+            Kc[2] = 0.01;
             Eigen::VectorXd Dxi(3);
             Dxi[0] = 0.7;
             Dxi[1] = 0.7;
@@ -690,9 +987,69 @@ public:
                 J_r_HAND(2, q_idx) = J_r_HAND_6(5, q_idx);
             }
 
-            task_HAND.compute(r_HAND_diff, Kc, Dxi, J_r_HAND, dq, dyn_model.invI, torque_HAND);
+            task_HAND.compute(r_HAND_diff, Kc, Dxi, J_r_HAND, dq, dyn_model.invI, torque_HAND, N_HAND);
 
-            torque = torque_JLC + N_JLC.transpose() * (torque_COL + (N_COL.transpose() * torque_HAND));
+            //
+            //
+            //
+            Eigen::MatrixXd N_QA(ndof, ndof);
+            Eigen::VectorXd torque_QA(ndof);
+            task_QA.compute(q, dq, dyn_model.I, spheres, torque_QA, N_QA);
+
+            Eigen::VectorXd torque_JLC2(ndof);
+            Eigen::MatrixXd N_JLC2(ndof, ndof);
+            ptask_JLC2->compute(q, dq, dyn_model.I, torque_JLC2, N_JLC2);
+
+
+
+//            torque = torque_JLC + N_JLC.transpose() * (torque_COL + (N_COL.transpose() * (torque_QA + N_QA.transpose() * torque_HAND)));
+//            torque = torque_JLC + N_JLC.transpose() * (torque_COL + (N_COL.transpose() * (torque_HAND + N_HAND.transpose() * torque_QA)));
+            torque = torque_JLC + N_JLC.transpose() * (torque_COL + (N_COL.transpose() * (torque_HAND + N_HAND.transpose() * const_torque)));
+//            torque = torque_JLC + N_JLC.transpose() * (torque_COL + (N_COL.transpose() * (torque_JLC2 + N_JLC2.transpose() * torque_HAND)));
+
+            Eigen::EigenSolver<Eigen::MatrixXd > es_JLC(N_JLC, false);
+//            Eigen::EigenSolver<Eigen::MatrixXd > es_JLC2(N_JLC2, false);
+            Eigen::EigenSolver<Eigen::MatrixXd > es_COL(N_COL, false);
+//            Eigen::EigenSolver<Eigen::MatrixXd > es_HAND(N_HAND, false);
+
+            Eigen::EigenSolver<Eigen::MatrixXd >::EigenvalueType eig_JLC = es_JLC.eigenvalues();
+//            Eigen::EigenSolver<Eigen::MatrixXd >::EigenvalueType eig_JLC2 = es_JLC2.eigenvalues();
+            Eigen::EigenSolver<Eigen::MatrixXd >::EigenvalueType eig_COL = es_COL.eigenvalues();
+//            Eigen::EigenSolver<Eigen::MatrixXd >::EigenvalueType eig_HAND = es_HAND.eigenvalues();
+
+//            std::cout << "eig_JLC" << std::endl;
+//            std::cout << eig_JLC << std::endl;
+
+//            std::cout << "eig_COL" << std::endl;
+//            std::cout << eig_COL << std::endl;
+
+//            std::cout << "eig_JLC2" << std::endl;
+//            std::cout << eig_JLC2 << std::endl;
+
+            Eigen::VectorXd eig_val_COL(ndof);
+            for (int q_idx = 0; q_idx < ndof; q_idx++) {
+                eig_val_COL(q_idx) = eig_COL(q_idx, 0).real();
+            }
+
+            eig_COL_vec[eig_COL_vec_idx] = eig_val_COL;
+            eig_COL_vec_idx = (eig_COL_vec_idx + 1) % eig_COL_vec.size();
+
+            torque_COL_vec[torque_COL_vec_idx] = torque_COL;
+            torque_COL_vec_idx = (torque_COL_vec_idx + 1) % torque_COL_vec.size();
+
+//            std::cout << "eig_HAND" << std::endl;
+//            std::cout << eig_HAND << std::endl;
+
+//            if (torque_JLC2(0) != torque_JLC2(0)) {
+//                std::cout << "nan !" << std::endl;
+//                return;
+//            }
+//            std::cout << "torque_JLC2" << std::endl;
+//            std::cout << torque_JLC2 << std::endl;
+
+//            std::cout << "N_JLC2" << std::endl;
+//            std::cout << N_JLC2 << std::endl;
+
 //            torque = torque_JLC + N_JLC.transpose() * torque_COL;
 //            torque = torque_JLC + N_JLC.transpose() * torque_HAND;
 //            torque = torque_HAND;
@@ -715,7 +1072,7 @@ public:
                 ros::Time last_time = ros::Time::now();
             }
             ros::spinOnce();
-//            loop_rate.sleep();
+            loop_rate.sleep();
         }
 
     }

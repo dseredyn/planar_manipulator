@@ -60,7 +60,7 @@
     }
 
     void Task_HAND::compute(const Eigen::VectorXd &T_diff, const Eigen::VectorXd &Kc, const Eigen::VectorXd &Dxi, const Eigen::MatrixXd &J, const Eigen::VectorXd &dq, const Eigen::MatrixXd &invI,
-                    Eigen::VectorXd &torque)
+                    Eigen::VectorXd &torque, Eigen::MatrixXd &N)
     {
             for (int dim_idx = 0; dim_idx < dim_; dim_idx++) {
                 wrench_[dim_idx] = Kc[dim_idx] * T_diff[dim_idx];
@@ -91,5 +91,7 @@
             // TODO: check if 2.0* is ok
             wrench_tmp.noalias() = 2.0 * Dc * tmpK_;
             torque.noalias() -= JT * wrench_tmp;
+
+            N = Eigen::MatrixXd::Identity(ndof_, ndof_) - (JT * J);
     }
 

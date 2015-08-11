@@ -280,7 +280,8 @@ public:
                 J_r_HAND(2, q_idx) = J_r_HAND_6(5, q_idx);
             }
 
-            task_HAND.compute(r_HAND_diff, Kc, Dxi, J_r_HAND, dq, dyn_model.invI, torque_HAND);
+            Eigen::MatrixXd N_HAND(ndof, ndof);
+            task_HAND.compute(r_HAND_diff, Kc, Dxi, J_r_HAND, dq, dyn_model.invI, torque_HAND, N_HAND);
 
             torque = torque_JLC + N_JLC.transpose() * (torque_COL + (N_COL.transpose() * torque_HAND));
 //            torque = torque_JLC + N_JLC.transpose() * torque_COL;
