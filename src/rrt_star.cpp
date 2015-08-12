@@ -162,7 +162,7 @@
         int q_new_idx = 0;
         V_[0] = start;
 
-        for (int step = 0; step < 50000; step++) {
+        for (int step = 0; step < 1000; step++) {
             bool sample_goal = randomUniform(0,1) < 0.05;
             Eigen::VectorXd q_rand(ndof_);
 

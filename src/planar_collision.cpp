@@ -122,10 +122,10 @@
                             if (c_dist - radius1 - radius2 - capsule1->length/2.0 - capsule2->length/2.0 > activation_dist) {
                                 return false;
                             }
-                            KDL::Vector line1A = T_B_C1 * KDL::Vector(0, -capsule1->length/2, 0);
-                            KDL::Vector line1B = T_B_C1 * KDL::Vector(0, capsule1->length/2, 0);
-                            KDL::Vector line2A = T_B_C2 * KDL::Vector(0, -capsule2->length/2, 0);
-                            KDL::Vector line2B = T_B_C2 * KDL::Vector(0, capsule2->length/2, 0);
+                            KDL::Vector line1A = T_B_C1 * KDL::Vector(0, 0, -capsule1->length/2);
+                            KDL::Vector line1B = T_B_C1 * KDL::Vector(0, 0, capsule1->length/2);
+                            KDL::Vector line2A = T_B_C2 * KDL::Vector(0, 0, -capsule2->length/2);
+                            KDL::Vector line2B = T_B_C2 * KDL::Vector(0, 0, capsule2->length/2);
                             distanceLines(line1A, line1B, line2A, line2B, dist, p1_B, p2_B);
                         }
                         else if (geom1->type == self_collision::Geometry::CAPSULE && geom2->type == self_collision::Geometry::SPHERE) {
@@ -136,8 +136,8 @@
                             if (c_dist - radius1 - radius2 - capsule1->length/2.0 > activation_dist) {
                                 return false;
                             }
-                            KDL::Vector line1A = T_B_C1 * KDL::Vector(0, -capsule1->length/2, 0);
-                            KDL::Vector line1B = T_B_C1 * KDL::Vector(0, capsule1->length/2, 0);
+                            KDL::Vector line1A = T_B_C1 * KDL::Vector(0, 0, -capsule1->length/2);
+                            KDL::Vector line1B = T_B_C1 * KDL::Vector(0, 0, capsule1->length/2);
                             KDL::Vector pt2 = T_B_C2.p;
                             distanceLinePoint(line1A, line1B, pt2, dist, p1_B, p2_B);
                         }
@@ -150,8 +150,8 @@
                                 return false;
                             }
                             KDL::Vector pt1 = T_B_C1.p;
-                            KDL::Vector line2A = T_B_C2 * KDL::Vector(0, -capsule2->length/2, 0);
-                            KDL::Vector line2B = T_B_C2 * KDL::Vector(0, capsule2->length/2, 0);
+                            KDL::Vector line2A = T_B_C2 * KDL::Vector(0, 0, -capsule2->length/2);
+                            KDL::Vector line2B = T_B_C2 * KDL::Vector(0, 0, capsule2->length/2);
                             distancePointLine(pt1, line2A, line2B, dist, p1_B, p2_B);
                         }
                         else if (geom1->type == self_collision::Geometry::SPHERE && geom2->type == self_collision::Geometry::SPHERE) {

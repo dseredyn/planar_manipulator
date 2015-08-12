@@ -112,7 +112,7 @@ int MarkerPublisher::addVectorMarker(int m_id, const KDL::Vector &v1, const KDL:
 int MarkerPublisher::addCapsule(int m_id, const KDL::Frame &fr, double length, double radius, const std::string &frame_id) {
 
 	KDL::Vector zero;
-	KDL::Vector v(0,length,0);
+	KDL::Vector v(0, 0, length);
 	KDL::Vector v2 = (fr * v) - (fr * zero);
 
 	visualization_msgs::Marker marker;
@@ -155,8 +155,8 @@ int MarkerPublisher::addCapsule(int m_id, const KDL::Frame &fr, double length, d
 	marker3.pose.position.y = fr.p.y();
 	marker3.pose.position.z = fr.p.z();
 	marker3.scale.z = length;
-    KDL::Frame T_O_C(KDL::Rotation::RotX(90.0/180.0*3.1415));
-    KDL::Frame T_B_C = fr * T_O_C;
+//    KDL::Frame T_O_C(KDL::Rotation::RotX(90.0/180.0*3.1415));
+    KDL::Frame T_B_C = fr;// * T_O_C;
 	T_B_C.M.GetQuaternion(qx, qy, qz, qw);
 	marker3.pose.orientation.x = qx;
 	marker3.pose.orientation.y = qy;

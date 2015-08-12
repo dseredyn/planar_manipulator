@@ -114,6 +114,16 @@ public:
         return m_id;
     }
 
+    boost::shared_ptr< self_collision::Collision > createCollisionCapsule(double radius, double length, const KDL::Frame &origin) const {
+        boost::shared_ptr< self_collision::Collision > pcol(new self_collision::Collision());
+        pcol->geometry.reset(new self_collision::Capsule());
+        boost::shared_ptr<self_collision::Capsule > cap = boost::static_pointer_cast<self_collision::Capsule >(pcol->geometry);
+        cap->radius = radius;
+        cap->length = length;
+        pcol->origin = origin;
+        return pcol;
+    }
+
     void spin() {
         
         // initialize random seed
@@ -136,13 +146,7 @@ public:
 
         // external collision objects - part of virtual link connected to the base link
         self_collision::Link::VecPtrCollision col_array;
-        boost::shared_ptr< self_collision::Collision > pcol(new self_collision::Collision());
-        pcol->geometry.reset(new self_collision::Capsule());
-        boost::shared_ptr<self_collision::Capsule > cap = boost::static_pointer_cast<self_collision::Capsule >(pcol->geometry);
-        cap->radius = 0.2;
-        cap->length = 0.3;
-        pcol->origin = KDL::Frame(KDL::Vector(1, 0.5, 0));
-        col_array.push_back(pcol);
+        col_array.push_back( createCollisionCapsule(0.2, 0.3, KDL::Frame(KDL::Rotation::RotX(90.0/180.0*PI), KDL::Vector(1, 0.5, 0))) );
         if (!col_model->addLink("env_link", "base", col_array)) {
             ROS_ERROR("ERROR: could not add external collision objects to the collision model");
             return;

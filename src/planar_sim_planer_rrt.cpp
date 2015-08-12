@@ -253,7 +253,6 @@ public:
             return;
         }
 
-
         double length = 0.0;
         for (std::list<Eigen::VectorXd >::const_iterator it1 = path.begin(), it2=++path.begin(); it2 != path.end(); it1++, it2++) {
             double dist = ((*it1) - (*it2)).norm();
@@ -273,7 +272,7 @@ public:
                 return;
             }
         }
-        std::cout << "ERROR: getPointOnPath: ??" << std::endl;
+        x = (*(--path.end()));
     }
 
     boost::shared_ptr< self_collision::Collision > createCollisionCapsule(double radius, double length, const KDL::Frame &origin) const {
@@ -309,8 +308,8 @@ public:
         // external collision objects - part of virtual link connected to the base link
         self_collision::Link::VecPtrCollision col_array;
 //        col_array.push_back( createCollisionCapsule(0.2, 0.3, KDL::Frame(KDL::Vector(1, 0.5, 0))) );
-        col_array.push_back( createCollisionCapsule(0.05, 0.3, KDL::Frame(KDL::Vector(1, 0.2, 0))) );
-        col_array.push_back( createCollisionCapsule(0.05, 0.2, KDL::Frame(KDL::Rotation::RotZ(90.0/180.0*PI), KDL::Vector(0.9, 0.35, 0))) );
+        col_array.push_back( createCollisionCapsule(0.05, 0.3, KDL::Frame(KDL::Rotation::RotX(90.0/180.0*PI), KDL::Vector(1, 0.2, 0))) );
+        col_array.push_back( createCollisionCapsule(0.05, 0.2, KDL::Frame(KDL::Rotation::RotZ(90.0/180.0*PI)*KDL::Rotation::RotX(90.0/180.0*PI), KDL::Vector(0.9, 0.35, 0))) );
         if (!col_model->addLink("env_link", "base", col_array)) {
             ROS_ERROR("ERROR: could not add external collision objects to the collision model");
             return;
@@ -423,7 +422,7 @@ public:
         RRTStar rrtQ5(5, boost::bind(&TestDynamicModel::checkCollisionQ5, this, _1, col_model, kin_model),
                         boost::bind(&TestDynamicModel::costLineQ5, this, _1, _2), boost::bind(&TestDynamicModel::sampleSpaceQ5, this, _1, lower_limit, upper_limit),
                         3.0/180.0*PI, 60.0/180.0*PI, 80.0/180.0*PI );
-
+/*
         // TEST: RRT (Q5)
         while (ros::ok()) {
 
@@ -474,7 +473,7 @@ public:
         }
 
         return;
-
+*/
 
 /*
         // TEST: RRT

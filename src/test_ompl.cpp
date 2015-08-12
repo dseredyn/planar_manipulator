@@ -226,8 +226,8 @@ public:
         // external collision objects - part of virtual link connected to the base link
         self_collision::Link::VecPtrCollision col_array;
 //        col_array.push_back( createCollisionCapsule(0.2, 0.3, KDL::Frame(KDL::Vector(1, 0.5, 0))) );
-        col_array.push_back( createCollisionCapsule(0.05, 0.3, KDL::Frame(KDL::Vector(1, 0.2, 0))) );
-        col_array.push_back( createCollisionCapsule(0.05, 0.2, KDL::Frame(KDL::Rotation::RotZ(90.0/180.0*PI), KDL::Vector(0.9, 0.35, 0))) );
+        col_array.push_back( createCollisionCapsule(0.05, 0.3, KDL::Frame(KDL::Rotation::RotX(90.0/180.0*PI), KDL::Vector(1, 0.2, 0))) );
+        col_array.push_back( createCollisionCapsule(0.05, 0.2, KDL::Frame(KDL::Rotation::RotZ(90.0/180.0*PI)*KDL::Rotation::RotX(90.0/180.0*PI), KDL::Vector(0.9, 0.35, 0))) );
         if (!col_model->addLink("env_link", "base", col_array)) {
             ROS_ERROR("ERROR: could not add external collision objects to the collision model");
             return;
