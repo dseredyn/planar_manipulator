@@ -186,7 +186,8 @@
                         return false;
     }
 
-    void getCollisionPairs(const boost::shared_ptr<self_collision::CollisionModel> &col_model, const std::vector<KDL::Frame > &links_fk, double activation_dist, std::vector<CollisionInfo> &link_collisions) {
+    void getCollisionPairs(const boost::shared_ptr<self_collision::CollisionModel> &col_model, const std::vector<KDL::Frame > &links_fk,
+                            double activation_dist, std::vector<CollisionInfo> &link_collisions) {
         // self collision
         for (self_collision::CollisionModel::CollisionPairs::const_iterator it = col_model->enabled_collisions.begin(); it != col_model->enabled_collisions.end(); it++) {
             int link1_idx = it->first;
@@ -247,5 +248,44 @@
             }
         }
         return false;
+    }
+
+    void getRepulsiveForces(const boost::shared_ptr<self_collision::CollisionModel> &col_model, const std::vector<KDL::Frame > &links_fk,
+                            double activation_dist, const KDL::Vector &center, std::vector<CollisionInfo> &link_collisions) {
+
+        boost::shared_ptr< self_collision::Collision > pcol(new self_collision::Collision());
+        pcol->geometry.reset(new self_collision::Sphere());
+        boost::shared_ptr<self_collision::Sphere > sph = boost::static_pointer_cast<self_collision::Sphere >(pcol->geometry);
+        sph->radius = 0.02;
+        pcol->origin = KDL::Frame(center);
+
+        int env_link_idx = col_model->getLinkIndex("env_link");
+        int base_link_idx = col_model->getLinkIndex("base");
+
+        const KDL::Frame &T_B_L1 = links_fk[base_link_idx];
+
+        for (self_collision::CollisionModel::VecPtrLink::const_iterator it = col_model->getLinks().begin(); it != col_model->getLinks().end(); it++) {
+            int link_idx = (*it)->index_;
+            if (link_idx == env_link_idx || link_idx == base_link_idx) {
+                continue;
+            }
+            const KDL::Frame &T_B_L2 = links_fk[link_idx];
+
+            for (self_collision::Link::VecPtrCollision::const_iterator col = col_model->getLinkCollisionArray(link_idx).begin(); col != col_model->getLinkCollisionArray(link_idx).end(); col++) {
+                double dist = 0.0;
+                KDL::Vector p1_B, p2_B, n1_B, n2_B;
+                if (checkCollision(pcol, *col, T_B_L1, T_B_L2, activation_dist, dist, p1_B, p2_B, n1_B, n2_B)) {
+                    CollisionInfo col_info;
+                    col_info.link1_idx = base_link_idx;
+                    col_info.link2_idx = link_idx;
+                    col_info.dist = dist;
+                    col_info.n1_B = n1_B;
+                    col_info.n2_B = n2_B;
+                    col_info.p1_B = p1_B;
+                    col_info.p2_B = p2_B;
+                    link_collisions.push_back(col_info);
+                }
+            }
+        }
     }
 

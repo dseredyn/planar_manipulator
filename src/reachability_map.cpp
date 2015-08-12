@@ -95,6 +95,7 @@
         }
 
         r_map_.resize(map_size, 0);
+        p_map_.resize(map_size, 0);
 
         max_value_ = 0;
         for (std::list<Eigen::VectorXd >::const_iterator it = ep_B_list.begin(); it != ep_B_list.end(); it++) {
@@ -114,7 +115,21 @@
         if (idx < 0) {
             return 0;
         }
-        return static_cast<double >(r_map_[idx]) / static_cast<double >(max_value_);
+        // TODO: check what happens if the score is below 0
+        return static_cast<double >(r_map_[idx] - p_map_[idx]) / static_cast<double >(max_value_);
+    }
+
+    void ReachabilityMap::addPenalty(const Eigen::VectorXd &x) {
+        int idx = getIndex(x);
+        if (idx >= 0) {
+            p_map_[idx] += max_value_;
+        }
+    }
+
+    void ReachabilityMap::resetPenalty() {
+        for (int idx = 0; idx < p_map_.size(); idx++) {
+            p_map_[idx] = 0;
+        }
     }
 
     int ReachabilityMap::getIndex(const Eigen::VectorXd &x) const {

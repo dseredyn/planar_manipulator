@@ -297,7 +297,7 @@ public:
         //
         Task_JLC task_JLC(lower_limit, upper_limit, limit_range, max_trq);
         double activation_dist = 0.05;
-        Task_COL task_COL(ndof, activation_dist, kin_model, col_model);
+        Task_COL task_COL(ndof, activation_dist, 10.0, kin_model, col_model);
 
         Task_QA task_QA(ndof);
 

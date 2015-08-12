@@ -52,15 +52,20 @@
         Dc(dim_, dim_),
         K0(dim_),
         tmpK_(dim_),
+        tmpKN_(dim_, ndof_),
+        Ji_(ndof_, dim_),
         wrench_tmp(dim_)
     {
+        lu_ = Eigen::PartialPivLU<Eigen::MatrixXd>(ndof_);
+        luKK_ = Eigen::PartialPivLU<Eigen::MatrixXd>(dim_);
     }
 
     Task_HAND::~Task_HAND() {
     }
 
-    void Task_HAND::compute(const Eigen::VectorXd &T_diff, const Eigen::VectorXd &Kc, const Eigen::VectorXd &Dxi, const Eigen::MatrixXd &J, const Eigen::VectorXd &dq, const Eigen::MatrixXd &invI,
-                    Eigen::VectorXd &torque, Eigen::MatrixXd &N)
+    void Task_HAND::compute(const Eigen::VectorXd &T_diff, const Eigen::VectorXd &Kc, const Eigen::VectorXd &Dxi,
+                            const Eigen::MatrixXd &J, const Eigen::VectorXd &dq, const Eigen::MatrixXd &invI,
+                            Eigen::VectorXd &torque, Eigen::MatrixXd &N)
     {
             for (int dim_idx = 0; dim_idx < dim_; dim_idx++) {
                 wrench_[dim_idx] = Kc[dim_idx] * T_diff[dim_idx];
@@ -69,7 +74,10 @@
 
             // code form cartesian_impedance.h
             JT = J.transpose();
-            tmpNK_.noalias() = J * invI;
+            lu_.compute(invI);
+            Eigen::MatrixXd Mi = lu_.inverse();
+
+            tmpNK_.noalias() = J * Mi;
             A.noalias() = tmpNK_ * JT;
             luKK_.compute(A);
             A = luKK_.inverse();
@@ -89,9 +97,22 @@
             Dc.noalias() = tmpKK2_ * Q;
             tmpK_.noalias() = J * dq;
             // TODO: check if 2.0* is ok
-            wrench_tmp.noalias() = 2.0 * Dc * tmpK_;
+            wrench_tmp.noalias() = Dc * tmpK_;
             torque.noalias() -= JT * wrench_tmp;
 
-            N = Eigen::MatrixXd::Identity(ndof_, ndof_) - (JT * J);
+
+
+    tmpNK_.noalias() = J * Mi;
+    tmpKK_.noalias() = tmpNK_ * JT;
+    luKK_.compute(tmpKK_);
+    tmpKK_ = luKK_.inverse();
+    tmpKN_.noalias() = Mi * JT;
+    Ji_.noalias() = tmpKN_ * tmpKK_;
+
+    N.noalias() = Eigen::MatrixXd::Identity(N.rows(), N.cols());
+    N.noalias() -=  JT * A * J * Mi;
+
+//            N = Eigen::MatrixXd::Identity(ndof_, ndof_) - (JT * J);
+//            N = Eigen::MatrixXd::Identity(ndof_, ndof_) - (Ji * J);
     }
 

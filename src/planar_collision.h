@@ -53,5 +53,8 @@
 
     bool checkSelfCollision(const boost::shared_ptr<self_collision::CollisionModel> &col_model, const std::vector<KDL::Frame > &links_fk, double activation_dist);
 
+    void getRepulsiveForces(const boost::shared_ptr<self_collision::CollisionModel> &col_model, const std::vector<KDL::Frame > &links_fk,
+                               double activation_dist, const KDL::Vector &center, std::vector<CollisionInfo> &link_collisions);
+
 #endif  // PLANAR_COLLISION_H__
 

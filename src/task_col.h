@@ -50,7 +50,7 @@ public:
 
 class Task_COL {
 public:
-    Task_COL(int ndof, double activation_dist, const KinematicModel &kin_model, const boost::shared_ptr<self_collision::CollisionModel> &col_model);
+    Task_COL(int ndof, double activation_dist, double Fmax, const KinematicModel &kin_model, const boost::shared_ptr<self_collision::CollisionModel> &col_model);
 
     ~Task_COL();
 
@@ -59,6 +59,7 @@ public:
 protected:
     int ndof_;
     double activation_dist_;
+    double Fmax_;
     const KinematicModel &kin_model_;
     std::vector<std::string > link_names_vec_;
 };

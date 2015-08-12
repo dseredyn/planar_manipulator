@@ -31,9 +31,10 @@
 
 #include "task_col.h"
 
-Task_COL::Task_COL(int ndof, double activation_dist, const KinematicModel &kin_model, const boost::shared_ptr<self_collision::CollisionModel> &col_model) :
+Task_COL::Task_COL(int ndof, double activation_dist, double Fmax, const KinematicModel &kin_model, const boost::shared_ptr<self_collision::CollisionModel> &col_model) :
         ndof_(ndof),
         activation_dist_(activation_dist),
+        Fmax_(Fmax),
         kin_model_(kin_model)
     {
         for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
@@ -72,17 +73,20 @@ void Task_COL::compute(const Eigen::VectorXd &q, const Eigen::VectorXd &dq, cons
                 double depth = (activation_dist_ - it->dist);
 
                 // repulsive force
-                double Fmax = 20.0;
                 double f = 0.0;
                 if (it->dist <= activation_dist_) {
-                    f = (it->dist - activation_dist_) / activation_dist_;
+                    f = (activation_dist_ - it->dist) / activation_dist_;
                 }
                 else {
                     f = 0.0;
                 }
-                double Frep = Fmax * f * f;
 
-                double K = 2.0 * Fmax / (activation_dist_ * activation_dist_);
+                if (f > 1.0) {
+                    f = 1.0;
+                }
+                double Frep = Fmax_ * f * f;
+
+                double K = 2.0 * Fmax_ / (activation_dist_ * activation_dist_);
 
                 // the mapping between motions along contact normal and the Cartesian coordinates
                 KDL::Vector e1 = n1_L1;
@@ -119,12 +123,19 @@ void Task_COL::compute(const Eigen::VectorXd &q, const Eigen::VectorXd &dq, cons
                 if (activation < 0.0) {
                     activation = 0.0;
                 }
-                if (ddij <= 0.0) {
-                    activation = 0.0;
-                }
+//                if (ddij <= 0.0) {
+//                    activation = 0.0;
+//                }
+
+                Eigen::JacobiSVD<Eigen::MatrixXd> svd(Jcol, Eigen::ComputeFullV);
+
+                Eigen::MatrixXd activation_matrix = Eigen::MatrixXd::Zero(ndof_, ndof_);
+                activation_matrix(0,0) = activation;
+                activation_matrix(1,1) = activation;
 
                 Eigen::MatrixXd Ncol12(ndof_, ndof_);
-                Ncol12 = Eigen::MatrixXd::Identity(ndof_, ndof_) - (Jcol.transpose() * activation * Jcol);
+//                Ncol12 = Eigen::MatrixXd::Identity(ndof_, ndof_) - (Jcol.transpose() * activation * Jcol);
+                Ncol12 = Eigen::MatrixXd::Identity(ndof_, ndof_) - (svd.matrixV() * activation_matrix * svd.matrixV().transpose());
                 N_COL = N_COL * Ncol12;
 
                 // calculate collision mass (1 dof)

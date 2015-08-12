@@ -48,6 +48,9 @@ public:
 
     double getValue(const Eigen::VectorXd &x) const;
 
+    void addPenalty(const Eigen::VectorXd &x);
+    void resetPenalty();
+
 protected:
 
     int getIndex(const Eigen::VectorXd &x) const;
@@ -57,6 +60,7 @@ protected:
     int max_value_;
     Eigen::VectorXd ep_min_, ep_max_;
     std::vector<int > r_map_;
+    std::vector<int > p_map_;
     std::vector<int > steps_;
 };
 

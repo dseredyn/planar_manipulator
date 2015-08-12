@@ -41,7 +41,8 @@ public:
 
     ~Task_HAND();
 
-    void compute(const Eigen::VectorXd &T_diff, const Eigen::VectorXd &Kc, const Eigen::VectorXd &Dxi, const Eigen::MatrixXd &J, const Eigen::VectorXd &dq, const Eigen::MatrixXd &invI,
+    void compute(const Eigen::VectorXd &T_diff, const Eigen::VectorXd &Kc, const Eigen::VectorXd &Dxi,
+                    const Eigen::MatrixXd &J, const Eigen::VectorXd &dq, const Eigen::MatrixXd &invI,
                     Eigen::VectorXd &torque, Eigen::MatrixXd &N);
 
 protected:
@@ -50,7 +51,7 @@ protected:
     Eigen::MatrixXd JT;
     Eigen::MatrixXd tmpNK_;
     Eigen::MatrixXd A;
-    Eigen::PartialPivLU<Eigen::MatrixXd> luKK_;
+    Eigen::PartialPivLU<Eigen::MatrixXd> lu_, luKK_;
     Eigen::GeneralizedSelfAdjointEigenSolver<Eigen::MatrixXd> es_;
     Eigen::MatrixXd Q;
     Eigen::MatrixXd tmpKK_;
@@ -58,6 +59,8 @@ protected:
     Eigen::MatrixXd Dc;
     Eigen::VectorXd K0;
     Eigen::VectorXd tmpK_;
+    Eigen::MatrixXd tmpKN_;
+    Eigen::MatrixXd Ji_;
     Eigen::VectorXd wrench_tmp;
 };
 
