@@ -33,17 +33,15 @@
 
 #include <set>
 
-KinematicModel::KinematicModel(const std::string &urdf_string, const std::vector<std::string > &joint_names) :
-    jac_solver_(NULL),
-    fk_solver_(NULL)
+KinematicModel::KinematicModel(const std::string &urdf_string, const std::vector<std::string > &joint_names)
 {
     if (!kdl_parser::treeFromString(urdf_string, tree_)){
         std::cout << "Failed to construct kdl tree" << std::endl;
         return;
     }
 
-    jac_solver_ = new KDL::TreeJntToJacSolver(tree_);
-    fk_solver_ = new KDL::TreeFkSolverPos_recursive(tree_);
+    pjac_solver_.reset(new KDL::TreeJntToJacSolver(tree_));
+    pfk_solver_.reset(new KDL::TreeFkSolverPos_recursive(tree_));
 
     for (KDL::SegmentMap::const_iterator seg_it = tree_.getSegments().begin(); seg_it != tree_.getSegments().end(); seg_it++) {
         for (int q_idx = 0; q_idx < joint_names.size(); q_idx++) {
@@ -56,15 +54,6 @@ KinematicModel::KinematicModel(const std::string &urdf_string, const std::vector
 }
 
 KinematicModel::~KinematicModel() {
-    if (jac_solver_ != NULL) {
-        delete jac_solver_;
-        jac_solver_ = NULL;
-    }
-
-    if (fk_solver_ != NULL) {
-        delete fk_solver_;
-        fk_solver_ = NULL;
-    }
 }
 
 void KinematicModel::getJacobian(Jacobian &jac, const std::string &link_name, const Eigen::VectorXd &q) const {
@@ -76,7 +65,7 @@ void KinematicModel::getJacobian(Jacobian &jac, const std::string &link_name, co
 
     KDL::Jacobian jac_out( q.innerSize() );
     SetToZero(jac_out);
-    jac_solver_->JntToJac(q_in, jac_out, link_name);
+    pjac_solver_->JntToJac(q_in, jac_out, link_name);
     for (int q_idx = 0; q_idx < q.innerSize(); q_idx++) {
         int q_nr = q_idx_q_nr_map_.find(q_idx)->second;
         KDL::Twist t = jac_out.getColumn(q_nr);
@@ -92,7 +81,7 @@ void KinematicModel::calculateFk(KDL::Frame &T, const std::string &link_name, co
         int q_nr = q_idx_q_nr_map_.find(q_idx)->second;
         q_in(q_nr) = q[q_idx];
     }
-    fk_solver_->JntToCart(q_in, T, link_name);
+    pfk_solver_->JntToCart(q_in, T, link_name);
 }
 
 void KinematicModel::getJacobiansForPairX(Jacobian &jac1, Jacobian &jac2,

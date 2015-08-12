@@ -53,6 +53,7 @@
 #include "planar_collision.h"
 #include "random_uniform.h"
 #include "reachability_map.h"
+#include "rrt_star.h"
 
 class SphereQ {
 public:
@@ -104,227 +105,6 @@ protected:
     int ndof_;
     Eigen::VectorXd lower_limit_;
     Eigen::VectorXd upper_limit_;
-};
-
-class RRTStar {
-public:
-    RRTStar(boost::function<bool(const Eigen::VectorXd &x)> collision_func, boost::function<double(const Eigen::VectorXd &x, const Eigen::VectorXd &y)> costLine_func) :
-        collision_func_(collision_func),
-        costLine_func_(costLine_func)
-    {
-    }
-
-    bool isStateValid(const Eigen::VectorXd &x) const {
-        return !collision_func_(x);
-    }
-
-    bool sampleFree(Eigen::VectorXd &sample_free) const {
-        Eigen::VectorXd x(2);
-        for (int i=0; i < 100; i++) {
-            x(0) = randomUniform(0,2);
-            x(1) = randomUniform(-1,1);
-            if (isStateValid(x)) {
-                sample_free = x;
-                return true;
-            }
-        }
-        return false;
-    }
-
-    int nearest(const Eigen::VectorXd &x) const {
-        double min_dist = -1.0;
-        int min_idx = -1;
-        for (std::map<int, Eigen::VectorXd >::const_iterator v_it = V_.begin(); v_it != V_.end(); v_it++) {
-            double dist = (v_it->second - x).norm();
-            if (min_idx < 0 || dist < min_dist) {
-                min_dist = dist;
-                min_idx = v_it->first;
-            }
-        }
-        return min_idx;
-    }
-
-    void steer(const Eigen::VectorXd &x_from, const Eigen::VectorXd &x_to, double steer_dist, Eigen::VectorXd &x) const {
-        Eigen::VectorXd v = x_to - x_from;
-        if (v.norm() <= steer_dist) {
-            x = x_to;
-        }
-        else {
-            x = x_from + steer_dist * v / v.norm();
-        }
-    }
-
-    bool collisionFree(const Eigen::VectorXd &x_from, const Eigen::VectorXd &x_to) const {
-        double step = 0.05;
-        Eigen::VectorXd v = x_to - x_from;
-        double dist = v.norm();
-        v = v / dist;
-        double progress = 0.0;
-        while (true) {
-            progress += step;
-            bool end = false;
-            if (progress > dist) {
-                progress = dist;
-                end = true;
-            }
-            Eigen::VectorXd x = x_from + v * progress;
-            if (!isStateValid(x)) {
-                return false;
-            }
-            if (end) {
-                break;
-            }
-        }
-        return true;
-    }
-
-    void near(const Eigen::VectorXd &x, double near_dist, std::list<int > &q_near_idx_list) const {
-        for (std::map<int, Eigen::VectorXd >::const_iterator v_it = V_.begin(); v_it != V_.end(); v_it++) {
-            double dist = (v_it->second - x).norm();
-            if (dist <= near_dist) {
-                q_near_idx_list.push_back(v_it->first);
-            }
-        }
-    }
-
-    double costLine(const Eigen::VectorXd &x1, const Eigen::VectorXd &x2) const {
-        return costLine_func_(x1, x2);
-    }
-
-    double costLine(int x1_idx, int x2_idx) const {
-        return costLine(V_.find(x1_idx)->second, V_.find(x2_idx)->second);
-    }
-
-
-    double cost(int q_idx) const {
-        std::map<int, int >::const_iterator e_it = E_.find(q_idx);
-        if (e_it == E_.end()) {
-            return 0.0;
-        }
-        int q_parent_idx = e_it->second;
-        return costLine(q_idx, q_parent_idx) + cost(q_parent_idx);
-    }
-
-    void getPath(int q_idx, std::list<int > &path) {
-        std::map<int, int >::const_iterator e_it = E_.find(q_idx);
-        if (e_it == E_.end()) {
-            path.clear();
-            path.push_back(q_idx);
-        }
-        else {
-            int q_parent_idx = e_it->second;
-            getPath(q_parent_idx, path);
-            path.push_back(q_idx);
-        }
-    }
-
-    void plan(const Eigen::VectorXd &start, const Eigen::VectorXd &goal, std::list<Eigen::VectorXd > &path) {
-        double goal_tolerance = 0.05;
-
-        V_.clear();
-        E_.clear();
-        path.clear();
-
-        double steer_dist = 0.2;
-        double near_dist = 0.4;
-        int q_new_idx = 0;
-        V_[0] = start;
-
-        for (int step = 0; step < 1000; step++) {
-            bool sample_goal = randomUniform(0,1) < 0.05;
-            Eigen::VectorXd q_rand(2);
-
-            if (sample_goal) {
-                q_rand = goal;
-            }
-            else {
-                if (!sampleFree(q_rand)) {
-                    std::cout << "ERROR: RRTStar::plan: could not sample free space" << std::endl;
-                    return;
-                }
-            }
-
-            int q_nearest_idx = nearest(q_rand);
-            const Eigen::VectorXd &q_nearest = V_.find(q_nearest_idx)->second;
-            Eigen::VectorXd q_new(2);
-            steer(q_nearest, q_rand, steer_dist, q_new);
-
-            if (collisionFree(q_nearest, q_new)) {
-
-                bool isGoal = (q_new - goal).norm() < goal_tolerance;
-
-                std::list<int > q_near_idx_list;
-                near(q_new, near_dist, q_near_idx_list);
-                double min_cost = cost(q_nearest_idx);
-                int min_idx = q_nearest_idx;                
-                for (std::list<int >::const_iterator qi_it = q_near_idx_list.begin(); qi_it != q_near_idx_list.end(); qi_it++) {
-                    int q_idx = *qi_it;
-                    double c = cost(q_idx);
-                    if (min_idx == -1 || min_cost > c && collisionFree(V_.find(q_idx)->second, q_new)) {
-                        min_idx = q_idx;
-                        min_cost = c;
-                    }
-                }
-
-                q_new_idx++;
-                V_[q_new_idx] = q_new;
-                E_[q_new_idx] = min_idx;
-
-
-                double cost_q_new = cost(q_new_idx);
-                for (std::list<int >::const_iterator qi_it = q_near_idx_list.begin(); qi_it != q_near_idx_list.end(); qi_it++) {
-                    int q_near_idx = *qi_it;
-                    Eigen::VectorXd q_near = V_.find(q_near_idx)->second;
-                    if (cost_q_new + costLine(q_new, q_near) < cost(q_near_idx)) {
-                        bool col_free = collisionFree(q_new, q_near);
-                        if (col_free) {
-                                int q_parent_idx = E_[q_near_idx];
-                                E_[q_near_idx] = q_new_idx;
-                        }
-                    }
-                }
-            }
-        }
-
-        double min_cost = 0.0;
-        int min_goal_idx = -1;
-        for (std::map<int, Eigen::VectorXd >::const_iterator v_it = V_.begin(); v_it != V_.end(); v_it++) {
-            double dist = (v_it->second - goal).norm();
-            double c = cost(v_it->first);
-            if (dist < goal_tolerance && (min_goal_idx < 0 || min_cost > c)) {
-                min_cost = c;
-                min_goal_idx = v_it->first;
-            }
-        }
-
-        std::list<int > idx_path;
-        getPath(min_goal_idx, idx_path);
-        for (std::list<int >::const_iterator p_it = idx_path.begin(); p_it != idx_path.end(); p_it++) {
-            path.push_back(V_.find(*p_it)->second);
-        }
-    }
-
-    int addTreeMarker(MarkerPublisher &markers_pub, int m_id) const {
-        std::vector<std::pair<KDL::Vector, KDL::Vector > > vec_arr;
-        for (std::map<int, int >::const_iterator e_it = E_.begin(); e_it != E_.end(); e_it++) {
-            const Eigen::VectorXd &x1 = V_.find(e_it->first)->second;
-            const Eigen::VectorXd &x2 = V_.find(e_it->second)->second;
-            KDL::Vector pos1(x1(0), x1(1), 0), pos2(x2(0), x2(1), 0);
-            vec_arr.push_back( std::make_pair(pos1, pos2) );
-            m_id = markers_pub.addVectorMarker(m_id, pos1, pos2, 0, 0.7, 0, 0.5, 0.01, "base");
-        }
-
-        const Eigen::VectorXd &xs = V_.find(0)->second;
-        KDL::Vector pos(xs(0), xs(1), 0);
-        m_id = markers_pub.addSinglePointMarker(m_id, pos, 0, 1, 0, 1, 0.05, "base");
-        return m_id;
-    }
-
-protected:
-    boost::function<bool(const Eigen::VectorXd &x)> collision_func_;
-    boost::function<double(const Eigen::VectorXd &x, const Eigen::VectorXd &y)> costLine_func_;
-    std::map<int, Eigen::VectorXd > V_;
-    std::map<int, int > E_;
 };
 
 class TestDynamicModel {
@@ -424,35 +204,56 @@ public:
     }
 
     double costLine(const Eigen::VectorXd &x1, const Eigen::VectorXd &x2) const {
-/*        double min_dist1 = 100000.0;
-        double min_dist2 = 100000.0;
-//        std::cout << penalty_points_.size() << std::endl;
-        for (std::list<Eigen::VectorXd >::const_iterator it = penalty_points_.begin(); it != penalty_points_.end(); it++) {
-            double dist1 = ((*it) - x1).norm();
-            double dist2 = ((*it) - x2).norm();
-            if (dist1 < min_dist1) {
-                min_dist1 = dist1;
-            }
-            if (dist2 < min_dist2) {
-                min_dist2 = dist2;
-            }
-        }
-        double dist_range = 0.2;
-        min_dist1 /= dist_range;
-        min_dist2 /= dist_range;
-        if (min_dist1 > 1.0) {
-            min_dist1 = 1.0;
-        }
-        if (min_dist2 > 1.0) {
-            min_dist2 = 1.0;
-        }
-*/
-//        return (x1-x2).norm() * (2.0 - r_map_.getValue(x1) - r_map_.getValue(x2) + 2.0 - min_dist1 - min_dist2);
-//        return (x1-x2).norm() * (2.0 - min_dist1 - min_dist2);
         return (x1-x2).norm() * (2.0 - r_map_.getValue(x1) - r_map_.getValue(x2));
     }
 
+    void sampleSpace(Eigen::VectorXd &sample) const {
+        sample(0) = randomUniform(0,1.7);
+        sample(1) = randomUniform(-1,1);
+    }
+
+    bool checkCollisionQ5(const Eigen::VectorXd &x, const boost::shared_ptr<self_collision::CollisionModel> &col_model, const KinematicModel &kin_model) {
+        std::vector<CollisionInfo> link_collisions;
+        std::vector<KDL::Frame > links_fk(col_model->getLinksCount());
+        // calculate forward kinematics for all links
+        for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
+            kin_model.calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), x);
+        }
+        getCollisionPairs(col_model, links_fk, 0.05, link_collisions);
+        if (link_collisions.size() > 0) {
+            return true;
+        }
+
+        return false;
+    }
+
+    double costLineQ5(const Eigen::VectorXd &x1, const Eigen::VectorXd &x2) const {
+        return (x1-x2).norm();
+    }
+
+    void sampleSpaceQ5(Eigen::VectorXd &sample, const Eigen::VectorXd &lower_limit, const Eigen::VectorXd &upper_limit) const {
+        for (int q_idx = 0; q_idx < 5; q_idx++) {
+            sample(q_idx) = randomUniform(lower_limit(q_idx), upper_limit(q_idx));
+        }
+    }
+
     void getPointOnPath(const std::list<Eigen::VectorXd > &path, double f, Eigen::VectorXd &x) const {
+
+        if (path.size() == 0) {
+            std::cout << "ERROR: getPointOnPath: path size is 0" << std::endl;
+            return;
+        }
+        else if (path.size() == 1 || f < 0.0) {
+            x = (*path.begin());
+            return;
+        }
+
+        if (f > 1.0) {
+            x = (*(--path.end()));
+            return;
+        }
+
+
         double length = 0.0;
         for (std::list<Eigen::VectorXd >::const_iterator it1 = path.begin(), it2=++path.begin(); it2 != path.end(); it1++, it2++) {
             double dist = ((*it1) - (*it2)).norm();
@@ -472,7 +273,7 @@ public:
                 return;
             }
         }
-        x = (*(--path.end()));
+        std::cout << "ERROR: getPointOnPath: ??" << std::endl;
     }
 
     boost::shared_ptr< self_collision::Collision > createCollisionCapsule(double radius, double length, const KDL::Frame &origin) const {
@@ -616,7 +417,65 @@ public:
         Task_HAND task_HAND(ndof, 3);
         Task_QA task_QA(ndof, lower_limit, upper_limit);
 
-        RRTStar rrt( boost::bind(&TestDynamicModel::checkCollision, this, _1, links_fk, col_model), boost::bind(&TestDynamicModel::costLine, this, _1, _2) );
+        RRTStar rrt(2, boost::bind(&TestDynamicModel::checkCollision, this, _1, links_fk, col_model),
+                    boost::bind(&TestDynamicModel::costLine, this, _1, _2), boost::bind(&TestDynamicModel::sampleSpace, this, _1), 0.05, 0.2, 0.4 );
+
+        RRTStar rrtQ5(5, boost::bind(&TestDynamicModel::checkCollisionQ5, this, _1, col_model, kin_model),
+                        boost::bind(&TestDynamicModel::costLineQ5, this, _1, _2), boost::bind(&TestDynamicModel::sampleSpaceQ5, this, _1, lower_limit, upper_limit),
+                        3.0/180.0*PI, 60.0/180.0*PI, 80.0/180.0*PI );
+
+        // TEST: RRT (Q5)
+        while (ros::ok()) {
+
+            Eigen::VectorXd xs(ndof), xe(ndof);
+            xs = q;
+            for (int q_idx = 0; q_idx < ndof; q_idx++) {
+                xe(q_idx) = randomUniform(lower_limit(q_idx), upper_limit(q_idx));
+            }
+
+            if (!rrt.isStateValid(xe)) {
+                continue;
+            }
+
+            KDL::Frame T_B_E;
+            kin_model.calculateFk(T_B_E, col_model->getLinkName(effector_idx), xe);
+            publishTransform(T_B_E, "effector_dest");
+
+            std::list<Eigen::VectorXd > path;
+            rrtQ5.plan(xs, xe, 0.05, path);
+
+            std::cout << "path.size(): " << path.size() << std::endl;
+            if (path.size() == 0) {
+                continue;
+            }
+
+            for (double f = 0.0; f < 1.0; f += 0.001) {
+                Eigen::VectorXd x(ndof);
+                getPointOnPath(path, f, x);
+
+                std::vector<KDL::Frame > links_fk(col_model->getLinksCount());
+                // calculate forward kinematics for all links
+                for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
+                    kin_model.calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), x);
+                }
+
+                publishJointState(x, joint_names);
+                int m_id = 0;
+                m_id = publishRobotModelVis(m_id, col_model, links_fk);
+                markers_pub_.publish();
+
+                ros::spinOnce();
+                ros::Duration(0.01).sleep();
+            }
+
+            getchar();
+
+            q = xe;
+        }
+
+        return;
+
+
 /*
         // TEST: RRT
         while (ros::ok()) {
@@ -632,7 +491,7 @@ public:
             }
 
             std::list<Eigen::VectorXd > path;
-            rrt.plan(xs, xe, path);
+            rrt.plan(xs, xe, 0.05, path);
 
             int m_id = 100;
             m_id = rrt.addTreeMarker(markers_pub_, m_id);
@@ -731,7 +590,7 @@ public:
                     xs(0) = links_fk[effector_idx].p.x();
                     xs(1) = links_fk[effector_idx].p.y();
                     std::list<Eigen::VectorXd > path;
-                    rrt.plan(xs, xe, path);
+                    rrt.plan(xs, xe, 0.05, path);
                     target_path = path;
                     r_HAND_start = links_fk[effector_idx];
                     diff_target = KDL::diff(r_HAND_start, r_HAND_target, 1.0);
@@ -797,7 +656,7 @@ public:
                         xs(0) = links_fk[effector_idx].p.x();
                         xs(1) = links_fk[effector_idx].p.y();
                         std::list<Eigen::VectorXd > path;
-                        rrt.plan(xs, xe, path);
+                        rrt.plan(xs, xe, 0.05, path);
                         target_path = path;
 
                         // visualize the planned graph
@@ -845,7 +704,7 @@ public:
                     xs(0) = links_fk[effector_idx].p.x();
                     xs(1) = links_fk[effector_idx].p.y();
                     std::list<Eigen::VectorXd > path;
-                    rrt.plan(xs, xe, path);
+                    rrt.plan(xs, xe, 0.05, path);
                     target_path = path;
 
                     // visualize the planned graph

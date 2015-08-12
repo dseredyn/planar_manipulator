@@ -55,8 +55,8 @@ public:
 protected:
     KDL::Tree tree_;
     std::map<int, int > q_idx_q_nr_map_, q_nr_q_idx_map_;
-    KDL::TreeJntToJacSolver *jac_solver_;
-    KDL::TreeFkSolverPos_recursive *fk_solver_;
+    boost::shared_ptr<KDL::TreeJntToJacSolver > pjac_solver_;
+    boost::shared_ptr<KDL::TreeFkSolverPos_recursive > pfk_solver_;
 };
 
 #endif
