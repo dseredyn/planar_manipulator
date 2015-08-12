@@ -182,15 +182,15 @@ public:
         return false;
     }
 
-    void stateOmplToEigen(const ompl::base::State *s, Eigen::VectorXd &x) {
-        for (int q_idx = 0; q_idx < 5; q_idx++) {
+    void stateOmplToEigen(const ompl::base::State *s, Eigen::VectorXd &x, int ndof) {
+        for (int q_idx = 0; q_idx < ndof; q_idx++) {
             x(q_idx) = s->as<ompl::base::RealVectorStateSpace::StateType >()->operator[](q_idx);
         }
     }
 
-    bool isStateValid(const ompl::base::State *s, const boost::shared_ptr<self_collision::CollisionModel > &col_model, const boost::shared_ptr<KinematicModel > &kin_model) {
-        Eigen::VectorXd x(5);
-        stateOmplToEigen(s, x);
+    bool isStateValid(const ompl::base::State *s, const boost::shared_ptr<self_collision::CollisionModel > &col_model, const boost::shared_ptr<KinematicModel > &kin_model, int ndof) {
+        Eigen::VectorXd x(ndof);
+        stateOmplToEigen(s, x, ndof);
 
         std::vector<CollisionInfo> link_collisions;
         std::vector<KDL::Frame > links_fk(col_model->getLinksCount());
@@ -301,7 +301,7 @@ public:
         }
 
         ompl::base::SpaceInformationPtr si(new ompl::base::SpaceInformation(space));
-        si->setStateValidityChecker( boost::bind(&TestOmpl::isStateValid, this, _1, col_model, kin_model) );
+        si->setStateValidityChecker( boost::bind(&TestOmpl::isStateValid, this, _1, col_model, kin_model, ndof) );
         si->setStateValidityCheckingResolution(0.03);
         si->setup();
 
@@ -316,13 +316,13 @@ public:
 
             while (true) {
                 goal.random();
-                if (isStateValid(goal.get(), col_model, kin_model)) {
+                if (isStateValid(goal.get(), col_model, kin_model, ndof)) {
                     break;
                 }
             }
 
-            Eigen::VectorXd xe(5);
-            stateOmplToEigen(goal.get(), xe);
+            Eigen::VectorXd xe(ndof);
+            stateOmplToEigen(goal.get(), xe, ndof);
             KDL::Frame T_B_E;
             kin_model->calculateFk(T_B_E, col_model->getLinkName(effector_idx), xe);
             publishTransform(T_B_E, "effector_dest");
@@ -348,8 +348,8 @@ public:
                 std::list<Eigen::VectorXd > path2;
                 for (int i = 0; i< ppath->getStateCount(); i++) {
                     ompl::base::State *s = ppath->getState(i);
-                    Eigen::VectorXd x(5);
-                    stateOmplToEigen(s, x);
+                    Eigen::VectorXd x(ndof);
+                    stateOmplToEigen(s, x, ndof);
                     path2.push_back(x);
                 }
 
