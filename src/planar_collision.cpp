@@ -114,7 +114,7 @@
 
                         double c_dist = (T_B_C1.p - T_B_C2.p).Norm();
                         double radius1, radius2;
-                        if (geom1->type == self_collision::Geometry::CAPSULE && geom2->type == self_collision::Geometry::CAPSULE) {
+                        if (geom1->getType() == self_collision::Geometry::CAPSULE && geom2->getType() == self_collision::Geometry::CAPSULE) {
                             self_collision::Capsule *capsule1 = static_cast<self_collision::Capsule* >(geom1.get());
                             self_collision::Capsule *capsule2 = static_cast<self_collision::Capsule* >(geom2.get());
                             radius1 = capsule1->radius;
@@ -128,7 +128,7 @@
                             KDL::Vector line2B = T_B_C2 * KDL::Vector(0, 0, capsule2->length/2);
                             distanceLines(line1A, line1B, line2A, line2B, dist, p1_B, p2_B);
                         }
-                        else if (geom1->type == self_collision::Geometry::CAPSULE && geom2->type == self_collision::Geometry::SPHERE) {
+                        else if (geom1->getType() == self_collision::Geometry::CAPSULE && geom2->getType() == self_collision::Geometry::SPHERE) {
                             self_collision::Capsule *capsule1 = static_cast<self_collision::Capsule* >(geom1.get());
                             self_collision::Sphere *sphere2 = static_cast<self_collision::Sphere* >(geom2.get());
                             radius1 = capsule1->radius;
@@ -141,7 +141,7 @@
                             KDL::Vector pt2 = T_B_C2.p;
                             distanceLinePoint(line1A, line1B, pt2, dist, p1_B, p2_B);
                         }
-                        else if (geom1->type == self_collision::Geometry::SPHERE && geom2->type == self_collision::Geometry::CAPSULE) {
+                        else if (geom1->getType() == self_collision::Geometry::SPHERE && geom2->getType() == self_collision::Geometry::CAPSULE) {
                             self_collision::Sphere *sphere1 = static_cast<self_collision::Sphere* >(geom1.get());
                             self_collision::Capsule *capsule2 = static_cast<self_collision::Capsule* >(geom2.get());
                             radius1 = sphere1->radius;
@@ -154,7 +154,7 @@
                             KDL::Vector line2B = T_B_C2 * KDL::Vector(0, 0, capsule2->length/2);
                             distancePointLine(pt1, line2A, line2B, dist, p1_B, p2_B);
                         }
-                        else if (geom1->type == self_collision::Geometry::SPHERE && geom2->type == self_collision::Geometry::SPHERE) {
+                        else if (geom1->getType() == self_collision::Geometry::SPHERE && geom2->getType() == self_collision::Geometry::SPHERE) {
                             self_collision::Sphere *sphere1 = static_cast<self_collision::Sphere* >(geom1.get());
                             self_collision::Sphere *sphere2 = static_cast<self_collision::Sphere* >(geom2.get());
                             radius1 = sphere1->radius;

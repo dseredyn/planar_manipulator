@@ -49,7 +49,6 @@
 #include "task_col.h"
 #include "task_hand.h"
 #include "task_jlc.h"
-#include "planar_collision.h"
 #include "random_uniform.h"
 
 class TestDynamicModel {
@@ -98,14 +97,14 @@ public:
             KDL::Frame T_B_L = T[(*l_it)->index_];
             for (self_collision::Link::VecPtrCollision::const_iterator it = (*l_it)->collision_array.begin(); it != (*l_it)->collision_array.end(); it++) {
                 KDL::Frame T_B_O = T_B_L * (*it)->origin;
-                if ((*it)->geometry->type == self_collision::Geometry::CONVEX) {
+                if ((*it)->geometry->getType() == self_collision::Geometry::CONVEX) {
                     // TODO
                 }
-                else if ((*it)->geometry->type == self_collision::Geometry::SPHERE) {
+                else if ((*it)->geometry->getType() == self_collision::Geometry::SPHERE) {
                     self_collision::Sphere *sphere = static_cast<self_collision::Sphere* >((*it)->geometry.get());
                     m_id = markers_pub_.addSinglePointMarker(m_id, T_B_O.p, 0, 1, 0, 1, sphere->radius*2, "base");
                 }
-                else if ((*it)->geometry->type == self_collision::Geometry::CAPSULE) {
+                else if ((*it)->geometry->getType() == self_collision::Geometry::CAPSULE) {
                     self_collision::Capsule *capsule = static_cast<self_collision::Capsule* >((*it)->geometry.get());
                     m_id = markers_pub_.addCapsule(m_id, T_B_O, capsule->length, capsule->radius, "base");
                 }
@@ -116,12 +115,47 @@ public:
 
     boost::shared_ptr< self_collision::Collision > createCollisionCapsule(double radius, double length, const KDL::Frame &origin) const {
         boost::shared_ptr< self_collision::Collision > pcol(new self_collision::Collision());
-        pcol->geometry.reset(new self_collision::Capsule());
+        pcol->geometry.reset(new self_collision::Capsule(radius, length));
         boost::shared_ptr<self_collision::Capsule > cap = boost::static_pointer_cast<self_collision::Capsule >(pcol->geometry);
-        cap->radius = radius;
-        cap->length = length;
         pcol->origin = origin;
         return pcol;
+    }
+
+    void getCollisionPairs(const boost::shared_ptr<self_collision::CollisionModel> &col_model, const std::vector<KDL::Frame > &links_fk,
+                            double activation_dist, std::vector<self_collision::CollisionInfo> &link_collisions) {
+        // self collision
+        for (self_collision::CollisionModel::CollisionPairs::const_iterator it = col_model->enabled_collisions.begin(); it != col_model->enabled_collisions.end(); it++) {
+            int link1_idx = it->first;
+            int link2_idx = it->second;
+            KDL::Frame T_B_L1 = links_fk[link1_idx];
+            KDL::Frame T_B_L2 = links_fk[link2_idx];
+
+            for (self_collision::Link::VecPtrCollision::const_iterator col1 = col_model->getLinkCollisionArray(link1_idx).begin(); col1 != col_model->getLinkCollisionArray(link1_idx).end(); col1++) {
+                for (self_collision::Link::VecPtrCollision::const_iterator col2 = col_model->getLinkCollisionArray(link2_idx).begin(); col2 != col_model->getLinkCollisionArray(link2_idx).end(); col2++) {
+                    double dist = 0.0;
+                    KDL::Vector p1_B, p2_B, n1_B, n2_B;
+                    KDL::Frame T_B_C1 = T_B_L1 * (*col1)->origin;
+                    KDL::Frame T_B_C2 = T_B_L2 * (*col2)->origin;
+
+                    self_collision::CollisionModel::getDistance((*col1)->geometry, T_B_C1, (*col2)->geometry, T_B_C2, p1_B, p2_B, activation_dist, dist);
+
+                    if (dist < activation_dist) {
+                        self_collision::CollisionInfo col_info;
+                        col_info.link1_idx = link1_idx;
+                        col_info.link2_idx = link2_idx;
+                        col_info.dist = dist;
+                        n1_B = (p2_B - p1_B) / dist;
+                        n2_B = -n1_B;
+                        col_info.n1_B = n1_B;
+                        col_info.n2_B = n2_B;
+                        col_info.p1_B = p1_B;
+                        col_info.p2_B = p2_B;
+                        link_collisions.push_back(col_info);
+                    }
+
+                }
+            }
+        }
     }
 
     void spin() {
@@ -216,10 +250,10 @@ public:
         ros::Time last_time = ros::Time::now();
         KDL::Frame r_HAND_target;
         int loop_counter = 10000;
-        ros::Rate loop_rate(500);
+        ros::Rate loop_rate(100);
         while (ros::ok()) {
 
-            if (loop_counter > 1500) {
+            if (loop_counter > 500) {
                 r_HAND_target = KDL::Frame(KDL::Rotation::RotZ(randomUniform(-PI, PI)), KDL::Vector(randomUniform(0,2), randomUniform(-1,1), 0));
 
                 publishTransform(r_HAND_target, "effector_dest");
@@ -246,6 +280,16 @@ public:
             //
             std::vector<self_collision::CollisionInfo> link_collisions;
             getCollisionPairs(col_model, links_fk, activation_dist, link_collisions);
+
+            {
+                    int m_id = 1000;
+                    for (std::vector<self_collision::CollisionInfo>::const_iterator it = link_collisions.begin(); it != link_collisions.end(); it++) {
+                        m_id = markers_pub_.addVectorMarker(m_id, it->p1_B, it->p2_B, 1, 1, 1, 1, 0.01, "world");
+                    }
+                    markers_pub_.addEraseMarkers(m_id, m_id+100);
+
+            }
+
 
             Eigen::VectorXd torque_COL(ndof);
             for (int q_idx = 0; q_idx < ndof; q_idx++) {

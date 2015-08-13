@@ -102,14 +102,14 @@ public:
             KDL::Frame T_B_L = T[(*l_it)->index_];
             for (self_collision::Link::VecPtrCollision::const_iterator it = (*l_it)->collision_array.begin(); it != (*l_it)->collision_array.end(); it++) {
                 KDL::Frame T_B_O = T_B_L * (*it)->origin;
-                if ((*it)->geometry->type == self_collision::Geometry::CONVEX) {
+                if ((*it)->geometry->getType() == self_collision::Geometry::CONVEX) {
                     // TODO
                 }
-                else if ((*it)->geometry->type == self_collision::Geometry::SPHERE) {
+                else if ((*it)->geometry->getType() == self_collision::Geometry::SPHERE) {
                     self_collision::Sphere *sphere = static_cast<self_collision::Sphere* >((*it)->geometry.get());
                     m_id = markers_pub_.addSinglePointMarker(m_id, T_B_O.p, 0, 1, 0, 1, sphere->radius*2, "base");
                 }
-                else if ((*it)->geometry->type == self_collision::Geometry::CAPSULE) {
+                else if ((*it)->geometry->getType() == self_collision::Geometry::CAPSULE) {
                     self_collision::Capsule *capsule = static_cast<self_collision::Capsule* >((*it)->geometry.get());
                     m_id = markers_pub_.addCapsule(m_id, T_B_O, capsule->length, capsule->radius, "base");
                 }
