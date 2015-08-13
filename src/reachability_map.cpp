@@ -33,7 +33,6 @@
 #include "Eigen/Dense"
 
 #include "reachability_map.h"
-#include "planar_collision.h"
 #include "random_uniform.h"
 
     ReachabilityMap::ReachabilityMap(double voxel_size, int dim) :
@@ -54,6 +53,9 @@
             ep_max_(dim_idx) = -1000000.0;
         }
 
+        std::set<int> excluded_link_idx;
+        excluded_link_idx.insert(col_model->getLinkIndex("env_link"));
+
         int effector_idx = col_model->getLinkIndex(effector_name);
         std::vector<KDL::Frame > links_fk(col_model->getLinksCount());
 
@@ -68,7 +70,7 @@
                 kin_model.calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), tmp_q);
             }
 
-            if (checkSelfCollision(col_model, links_fk, 0.0)) {
+            if (self_collision::checkCollision(col_model, links_fk, 0.01, excluded_link_idx)) {
                 continue;
             }
 

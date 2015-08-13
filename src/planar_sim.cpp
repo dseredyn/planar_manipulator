@@ -113,51 +113,6 @@ public:
         return m_id;
     }
 
-    boost::shared_ptr< self_collision::Collision > createCollisionCapsule(double radius, double length, const KDL::Frame &origin) const {
-        boost::shared_ptr< self_collision::Collision > pcol(new self_collision::Collision());
-        pcol->geometry.reset(new self_collision::Capsule(radius, length));
-        boost::shared_ptr<self_collision::Capsule > cap = boost::static_pointer_cast<self_collision::Capsule >(pcol->geometry);
-        pcol->origin = origin;
-        return pcol;
-    }
-
-    void getCollisionPairs(const boost::shared_ptr<self_collision::CollisionModel> &col_model, const std::vector<KDL::Frame > &links_fk,
-                            double activation_dist, std::vector<self_collision::CollisionInfo> &link_collisions) {
-        // self collision
-        for (self_collision::CollisionModel::CollisionPairs::const_iterator it = col_model->enabled_collisions.begin(); it != col_model->enabled_collisions.end(); it++) {
-            int link1_idx = it->first;
-            int link2_idx = it->second;
-            KDL::Frame T_B_L1 = links_fk[link1_idx];
-            KDL::Frame T_B_L2 = links_fk[link2_idx];
-
-            for (self_collision::Link::VecPtrCollision::const_iterator col1 = col_model->getLinkCollisionArray(link1_idx).begin(); col1 != col_model->getLinkCollisionArray(link1_idx).end(); col1++) {
-                for (self_collision::Link::VecPtrCollision::const_iterator col2 = col_model->getLinkCollisionArray(link2_idx).begin(); col2 != col_model->getLinkCollisionArray(link2_idx).end(); col2++) {
-                    double dist = 0.0;
-                    KDL::Vector p1_B, p2_B, n1_B, n2_B;
-                    KDL::Frame T_B_C1 = T_B_L1 * (*col1)->origin;
-                    KDL::Frame T_B_C2 = T_B_L2 * (*col2)->origin;
-
-                    self_collision::CollisionModel::getDistance((*col1)->geometry, T_B_C1, (*col2)->geometry, T_B_C2, p1_B, p2_B, activation_dist, dist);
-
-                    if (dist < activation_dist) {
-                        self_collision::CollisionInfo col_info;
-                        col_info.link1_idx = link1_idx;
-                        col_info.link2_idx = link2_idx;
-                        col_info.dist = dist;
-                        n1_B = (p2_B - p1_B) / dist;
-                        n2_B = -n1_B;
-                        col_info.n1_B = n1_B;
-                        col_info.n2_B = n2_B;
-                        col_info.p1_B = p1_B;
-                        col_info.p2_B = p2_B;
-                        link_collisions.push_back(col_info);
-                    }
-
-                }
-            }
-        }
-    }
-
     void spin() {
         
         // initialize random seed
@@ -180,7 +135,7 @@ public:
 
         // external collision objects - part of virtual link connected to the base link
         self_collision::Link::VecPtrCollision col_array;
-        col_array.push_back( createCollisionCapsule(0.2, 0.3, KDL::Frame(KDL::Rotation::RotX(90.0/180.0*PI), KDL::Vector(1, 0.5, 0))) );
+        col_array.push_back( self_collision::createCollisionCapsule(0.2, 0.3, KDL::Frame(KDL::Rotation::RotX(90.0/180.0*PI), KDL::Vector(1, 0.5, 0))) );
         if (!col_model->addLink("env_link", "base", col_array)) {
             ROS_ERROR("ERROR: could not add external collision objects to the collision model");
             return;
@@ -279,7 +234,7 @@ public:
             // collision constraints
             //
             std::vector<self_collision::CollisionInfo> link_collisions;
-            getCollisionPairs(col_model, links_fk, activation_dist, link_collisions);
+            self_collision::getCollisionPairs(col_model, links_fk, activation_dist, link_collisions);
 
             {
                     int m_id = 1000;

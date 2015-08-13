@@ -53,7 +53,6 @@
 #include <collision_convex_model/collision_convex_model.h>
 #include "kin_model/kin_model.h"
 #include "marker_publisher.h"
-#include "planar_collision.h"
 #include "random_uniform.h"
 
 class TestOmpl {
@@ -157,16 +156,6 @@ public:
         std::cout << "ERROR: getPointOnPath: ??" << std::endl;
     }
 
-    boost::shared_ptr< self_collision::Collision > createCollisionCapsule(double radius, double length, const KDL::Frame &origin) const {
-        boost::shared_ptr< self_collision::Collision > pcol(new self_collision::Collision());
-        pcol->geometry.reset(new self_collision::Capsule());
-        boost::shared_ptr<self_collision::Capsule > cap = boost::static_pointer_cast<self_collision::Capsule >(pcol->geometry);
-        cap->radius = radius;
-        cap->length = length;
-        pcol->origin = origin;
-        return pcol;
-    }
-
     bool checkCollisionQ5(const Eigen::VectorXd &x, const boost::shared_ptr<self_collision::CollisionModel> &col_model, const KinematicModel &kin_model) {
         std::vector<self_collision::CollisionInfo> link_collisions;
         std::vector<KDL::Frame > links_fk(col_model->getLinksCount());
@@ -174,7 +163,7 @@ public:
         for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
             kin_model.calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), x);
         }
-        getCollisionPairs(col_model, links_fk, 0.05, link_collisions);
+        self_collision::getCollisionPairs(col_model, links_fk, 0.05, link_collisions);
         if (link_collisions.size() > 0) {
             return true;
         }
@@ -198,7 +187,7 @@ public:
         for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
             kin_model->calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), x);
         }
-        getCollisionPairs(col_model, links_fk, 0.05, link_collisions);
+        self_collision::getCollisionPairs(col_model, links_fk, 0.05, link_collisions);
         if (link_collisions.size() > 0) {
             return false;
         }
@@ -225,9 +214,9 @@ public:
 
         // external collision objects - part of virtual link connected to the base link
         self_collision::Link::VecPtrCollision col_array;
-//        col_array.push_back( createCollisionCapsule(0.2, 0.3, KDL::Frame(KDL::Vector(1, 0.5, 0))) );
-        col_array.push_back( createCollisionCapsule(0.05, 0.3, KDL::Frame(KDL::Rotation::RotX(90.0/180.0*PI), KDL::Vector(1, 0.2, 0))) );
-        col_array.push_back( createCollisionCapsule(0.05, 0.2, KDL::Frame(KDL::Rotation::RotZ(90.0/180.0*PI)*KDL::Rotation::RotX(90.0/180.0*PI), KDL::Vector(0.9, 0.35, 0))) );
+//        col_array.push_back( self_collision::createCollisionCapsule(0.2, 0.3, KDL::Frame(KDL::Vector(1, 0.5, 0))) );
+        col_array.push_back( self_collision::createCollisionCapsule(0.05, 0.3, KDL::Frame(KDL::Rotation::RotX(90.0/180.0*PI), KDL::Vector(1, 0.2, 0))) );
+        col_array.push_back( self_collision::createCollisionCapsule(0.05, 0.2, KDL::Frame(KDL::Rotation::RotZ(90.0/180.0*PI)*KDL::Rotation::RotX(90.0/180.0*PI), KDL::Vector(0.9, 0.35, 0))) );
         if (!col_model->addLink("env_link", "base", col_array)) {
             ROS_ERROR("ERROR: could not add external collision objects to the collision model");
             return;
