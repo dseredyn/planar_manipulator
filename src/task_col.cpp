@@ -75,7 +75,7 @@ void Task_COL::compute(const Eigen::VectorXd &q, const Eigen::VectorXd &dq, cons
                 // repulsive force
                 double f = 0.0;
                 if (it->dist <= activation_dist_) {
-                    f = (activation_dist_ - it->dist) / activation_dist_;
+                    f = depth / activation_dist_;
                 }
                 else {
                     f = 0.0;

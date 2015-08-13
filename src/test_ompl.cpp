@@ -156,21 +156,6 @@ public:
         std::cout << "ERROR: getPointOnPath: ??" << std::endl;
     }
 
-    bool checkCollisionQ5(const Eigen::VectorXd &x, const boost::shared_ptr<self_collision::CollisionModel> &col_model, const KinematicModel &kin_model) {
-        std::vector<self_collision::CollisionInfo> link_collisions;
-        std::vector<KDL::Frame > links_fk(col_model->getLinksCount());
-        // calculate forward kinematics for all links
-        for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
-            kin_model.calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), x);
-        }
-        self_collision::getCollisionPairs(col_model, links_fk, 0.05, link_collisions);
-        if (link_collisions.size() > 0) {
-            return true;
-        }
-
-        return false;
-    }
-
     void stateOmplToEigen(const ompl::base::State *s, Eigen::VectorXd &x, int ndof) {
         for (int q_idx = 0; q_idx < ndof; q_idx++) {
             x(q_idx) = s->as<ompl::base::RealVectorStateSpace::StateType >()->operator[](q_idx);

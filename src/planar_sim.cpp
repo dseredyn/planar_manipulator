@@ -102,7 +102,7 @@ public:
                 }
                 else if ((*it)->geometry->getType() == self_collision::Geometry::SPHERE) {
                     self_collision::Sphere *sphere = static_cast<self_collision::Sphere* >((*it)->geometry.get());
-                    m_id = markers_pub_.addSinglePointMarker(m_id, T_B_O.p, 0, 1, 0, 1, sphere->radius*2, "base");
+                    m_id = markers_pub_.addSinglePointMarker(m_id, T_B_O.p, 0, 1, 0, 0.5, sphere->radius*2, "base");
                 }
                 else if ((*it)->geometry->getType() == self_collision::Geometry::CAPSULE) {
                     self_collision::Capsule *capsule = static_cast<self_collision::Capsule* >((*it)->geometry.get());
@@ -240,6 +240,8 @@ public:
                     int m_id = 1000;
                     for (std::vector<self_collision::CollisionInfo>::const_iterator it = link_collisions.begin(); it != link_collisions.end(); it++) {
                         m_id = markers_pub_.addVectorMarker(m_id, it->p1_B, it->p2_B, 1, 1, 1, 1, 0.01, "world");
+                        m_id = markers_pub_.addVectorMarker(m_id, it->p1_B, it->p1_B - 0.03 * it->n1_B, 1, 1, 1, 1, 0.01, "world");
+                        m_id = markers_pub_.addVectorMarker(m_id, it->p2_B, it->p2_B - 0.03 * it->n2_B, 1, 1, 1, 1, 0.01, "world");
                     }
                     markers_pub_.addEraseMarkers(m_id, m_id+100);
 

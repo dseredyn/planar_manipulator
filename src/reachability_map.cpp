@@ -70,7 +70,7 @@
                 kin_model.calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), tmp_q);
             }
 
-            if (self_collision::checkCollision(col_model, links_fk, 0.01, excluded_link_idx)) {
+            if (self_collision::checkCollision(col_model, links_fk, excluded_link_idx)) {
                 continue;
             }
 

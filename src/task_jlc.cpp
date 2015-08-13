@@ -79,6 +79,9 @@
                 if (activation_JLC_[q_idx] > 1.0) {
                     activation_JLC_[q_idx] = 1.0;
                 }
+                if ( (torque(q_idx) > 0 && dq(q_idx) > 0) || (torque(q_idx) <= 0 && dq(q_idx) <= 0)) {
+                    activation_JLC_[q_idx] = 0.0;
+                }
 
                 if (fabs(torque(q_idx)) > 0.001) {
                     k_(q_idx) = max_trq_[q_idx]/limit_range_[q_idx];
