@@ -35,10 +35,10 @@
 #include <math.h>
 
 DynModelPlanar5::DynModelPlanar5() {
-    I.resize(5,5);
-    invI.resize(5,5);
-    C.resize(5,5);
-    tmpTau.resize(5);
+    M_.resize(5,5);
+    invM_.resize(5,5);
+    C_.resize(5,5);
+    tmpTau_.resize(5);
 }
 
 DynModelPlanar5::~DynModelPlanar5() {
@@ -132,7 +132,6 @@ void DynModelPlanar5::gaussjordan(const Eigen::MatrixXd &inMatrix, Eigen::Matrix
 	int iRow, iCol, diagIndex;
 	double diagFactor, tmpFactor;
     Eigen::MatrixXd inMatrixCopy(inMatrix);
-//	double* inMatrixCopy = (double*) malloc(dim*dim*sizeof(double));
  
 	/* make deep copy of input matrix */
 	for(iRow = 0; iRow < dim; iRow++ ){
@@ -176,49 +175,30 @@ void DynModelPlanar5::gaussjordan(const Eigen::MatrixXd &inMatrix, Eigen::Matrix
 		} /* line-by-line elimination */
  
 	}
-//ree(inMatrixCopy);
 }
 
-/*void DynModelPlanar5::matvecprod(double *outVector, const double *inMatrix, const double *inVector, int nRow, int nCol){
-	int iRow, iCol = 0;
- 
-	for (iRow = 0; iRow < nRow; iRow++){
-		for (iCol = 0; iCol < nCol; iCol++){
-			outVector[iCol] += inMatrix[nRow*iRow+iCol] * inVector[iRow];
-		}
-	}  
-}*/
-
 void DynModelPlanar5::computeM(const Eigen::VectorXd &q) {
-	inertia(I, q);
-	gaussjordan(I, invI, 5);
+	inertia(M_, q);
+	gaussjordan(M_, invM_, 5);
 }
 
 void DynModelPlanar5::accel(Eigen::VectorXd &QDD, const Eigen::VectorXd &q, const Eigen::VectorXd &dq, const Eigen::VectorXd &t){
 
 	/* declare variables */
 	int iCol;
-//	double I[5][5];
-//	double invI[5][5];
-//	double C[5][5];
-//	double gravload[5][1];
-//	double friction[5][1];
-//	double tmpTau[1][5];
  
 	/* call the computational routines */
-	coriolis(C, q, dq);
+	coriolis(C_, q, dq);
 //	gravload(gravload, q);
 //	friction(friction, dq);
  
 	/* fill temporary vector */
-    tmpTau = C * dq;
-//	matvecprod(&tmpTau[0][0], &C[0][0], dq,5,5);
+    tmpTau_ = C_ * dq;
 	for (iCol = 0; iCol < 5; iCol++){
-//		tmpTau[0][iCol] = t[iCol] -  tmpTau[0][iCol] - gravload[iCol][0] + friction[iCol][0];
-		tmpTau[iCol] = t[iCol] -  tmpTau[iCol] - dq[iCol] * 0.5;
+//		tmpTau_[iCol] = t[iCol] -  tmpTau_[iCol] - gravload[iCol][0] + friction[iCol][0];
+		tmpTau_[iCol] = t[iCol] -  tmpTau_[iCol] - dq[iCol] * 0.1;
 	}
 	/* compute acceleration */
-    QDD = invI * tmpTau;
-//	matvecprod(&QDD[0][0], &invI[0][0], &tmpTau[0][0],5,5);
+    QDD = invM_ * tmpTau_;
 }
 

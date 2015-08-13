@@ -51,7 +51,7 @@
 #include "Eigen/Dense"
 
 #include <collision_convex_model/collision_convex_model.h>
-#include "kin_model.h"
+#include "kin_model/kin_model.h"
 #include "marker_publisher.h"
 #include "planar_collision.h"
 #include "random_uniform.h"
@@ -168,7 +168,7 @@ public:
     }
 
     bool checkCollisionQ5(const Eigen::VectorXd &x, const boost::shared_ptr<self_collision::CollisionModel> &col_model, const KinematicModel &kin_model) {
-        std::vector<CollisionInfo> link_collisions;
+        std::vector<self_collision::CollisionInfo> link_collisions;
         std::vector<KDL::Frame > links_fk(col_model->getLinksCount());
         // calculate forward kinematics for all links
         for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
@@ -192,7 +192,7 @@ public:
         Eigen::VectorXd x(ndof);
         stateOmplToEigen(s, x, ndof);
 
-        std::vector<CollisionInfo> link_collisions;
+        std::vector<self_collision::CollisionInfo> link_collisions;
         std::vector<KDL::Frame > links_fk(col_model->getLinksCount());
         // calculate forward kinematics for all links
         for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {

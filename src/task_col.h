@@ -35,18 +35,7 @@
 #include "Eigen/LU"
 
 #include <collision_convex_model/collision_convex_model.h>
-#include "kin_model.h"
-
-class CollisionInfo {
-public:
-    int link1_idx;
-    int link2_idx;
-    KDL::Vector p1_B;
-    KDL::Vector p2_B;
-    double dist;
-    KDL::Vector n1_B;
-    KDL::Vector n2_B;
-};
+#include "kin_model/kin_model.h"
 
 class Task_COL {
 public:
@@ -54,7 +43,7 @@ public:
 
     ~Task_COL();
 
-    void compute(const Eigen::VectorXd &q, const Eigen::VectorXd &dq, const Eigen::MatrixXd &invI, const std::vector<KDL::Frame > &links_fk, const std::vector<CollisionInfo> &link_collisions, Eigen::VectorXd &torque_COL, Eigen::MatrixXd &N_COL);
+    void compute(const Eigen::VectorXd &q, const Eigen::VectorXd &dq, const Eigen::MatrixXd &invI, const std::vector<KDL::Frame > &links_fk, const std::vector<self_collision::CollisionInfo> &link_collisions, Eigen::VectorXd &torque_COL, Eigen::MatrixXd &N_COL);
 
 protected:
     int ndof_;

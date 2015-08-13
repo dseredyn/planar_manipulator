@@ -45,8 +45,8 @@ Task_COL::Task_COL(int ndof, double activation_dist, double Fmax, const Kinemati
     Task_COL::~Task_COL() {
     }
 
-void Task_COL::compute(const Eigen::VectorXd &q, const Eigen::VectorXd &dq, const Eigen::MatrixXd &invI, const std::vector<KDL::Frame > &links_fk, const std::vector<CollisionInfo> &link_collisions, Eigen::VectorXd &torque_COL, Eigen::MatrixXd &N_COL) {
-            for (std::vector<CollisionInfo>::const_iterator it = link_collisions.begin(); it != link_collisions.end(); it++) {
+void Task_COL::compute(const Eigen::VectorXd &q, const Eigen::VectorXd &dq, const Eigen::MatrixXd &invI, const std::vector<KDL::Frame > &links_fk, const std::vector<self_collision::CollisionInfo> &link_collisions, Eigen::VectorXd &torque_COL, Eigen::MatrixXd &N_COL) {
+            for (std::vector<self_collision::CollisionInfo>::const_iterator it = link_collisions.begin(); it != link_collisions.end(); it++) {
                 const KDL::Frame &T_B_L1 = links_fk[it->link1_idx];
                 const std::string &link1_name = link_names_vec_[it->link1_idx];
                 const std::string &link2_name = link_names_vec_[it->link2_idx];
@@ -123,9 +123,9 @@ void Task_COL::compute(const Eigen::VectorXd &q, const Eigen::VectorXd &dq, cons
                 if (activation < 0.0) {
                     activation = 0.0;
                 }
-//                if (ddij <= 0.0) {
-//                    activation = 0.0;
-//                }
+                if (ddij <= 0.0) {
+                    activation = 0.0;
+                }
 
                 Eigen::JacobiSVD<Eigen::MatrixXd> svd(Jcol, Eigen::ComputeFullV);
 
@@ -134,14 +134,14 @@ void Task_COL::compute(const Eigen::VectorXd &q, const Eigen::VectorXd &dq, cons
                 activation_matrix(1,1) = activation;
 
                 Eigen::MatrixXd Ncol12(ndof_, ndof_);
-//                Ncol12 = Eigen::MatrixXd::Identity(ndof_, ndof_) - (Jcol.transpose() * activation * Jcol);
-                Ncol12 = Eigen::MatrixXd::Identity(ndof_, ndof_) - (svd.matrixV() * activation_matrix * svd.matrixV().transpose());
+                Ncol12 = Eigen::MatrixXd::Identity(ndof_, ndof_) - (Jcol.transpose() * activation * Jcol);
+//                Ncol12 = Eigen::MatrixXd::Identity(ndof_, ndof_) - (svd.matrixV() * activation_matrix * svd.matrixV().transpose());
                 N_COL = N_COL * Ncol12;
 
                 // calculate collision mass (1 dof)
-                double Mdij = (Jcol * invI * Jcol.transpose())(0,0);
+                double Mdij_inv = (Jcol * invI * Jcol.transpose())(0,0);
 
-                double D = 2.0 * 0.7 * sqrt(Mdij * K);
+                double D = 2.0 * 0.7 * sqrt(Mdij_inv * K);  // sqrt(K/M)
                 Eigen::VectorXd d_torque = Jcol.transpose() * (-Frep - D * ddij);
                 torque_COL += d_torque;
             }

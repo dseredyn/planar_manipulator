@@ -36,7 +36,7 @@
 
 #include "reachability_map.h"
 #include <collision_convex_model/collision_convex_model.h>
-#include "kin_model.h"
+#include "kin_model/kin_model.h"
 
 class ReachabilityMap {
 public:

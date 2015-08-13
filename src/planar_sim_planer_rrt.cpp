@@ -45,7 +45,7 @@
 
 #include "planar5_dyn_model.h"
 #include <collision_convex_model/collision_convex_model.h>
-#include "kin_model.h"
+#include "kin_model/kin_model.h"
 #include "marker_publisher.h"
 #include "task_col.h"
 #include "task_hand.h"
@@ -54,7 +54,7 @@
 #include "random_uniform.h"
 #include "reachability_map.h"
 #include "rrt_star.h"
-
+/*
 class SphereQ {
 public:
     SphereQ(const Eigen::VectorXd &center, double radius) :
@@ -106,7 +106,7 @@ protected:
     Eigen::VectorXd lower_limit_;
     Eigen::VectorXd upper_limit_;
 };
-
+*/
 class TestDynamicModel {
     ros::NodeHandle nh_;
     ros::Publisher joint_state_pub_;
@@ -213,7 +213,7 @@ public:
     }
 
     bool checkCollisionQ5(const Eigen::VectorXd &x, const boost::shared_ptr<self_collision::CollisionModel> &col_model, const KinematicModel &kin_model) {
-        std::vector<CollisionInfo> link_collisions;
+        std::vector<self_collision::CollisionInfo> link_collisions;
         std::vector<KDL::Frame > links_fk(col_model->getLinksCount());
         // calculate forward kinematics for all links
         for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
@@ -291,7 +291,7 @@ public:
         srand(time(NULL));
 
         // dynamics model
-        DynModelPlanar5 dyn_model;
+        boost::shared_ptr<DynamicModel > dyn_model( new DynModelPlanar5() );
 
         std::string robot_description_str;
         std::string robot_semantic_description_str;
@@ -411,10 +411,10 @@ public:
         Task_JLC task_JLC(lower_limit, upper_limit, limit_range, max_trq);
         double activation_dist = 0.05;
         Task_COL task_COL(ndof, activation_dist, 10.0, kin_model, col_model);
-        double activation_dist2 = 2.0;
-        Task_COL task_COL2(ndof, activation_dist2, 10.0, kin_model, col_model);
+//        double activation_dist2 = 2.0;
+//        Task_COL task_COL2(ndof, activation_dist2, 10.0, kin_model, col_model);
         Task_HAND task_HAND(ndof, 3);
-        Task_QA task_QA(ndof, lower_limit, upper_limit);
+//        Task_QA task_QA(ndof, lower_limit, upper_limit);
 
         RRTStar rrt(2, boost::bind(&TestDynamicModel::checkCollision, this, _1, links_fk, col_model),
                     boost::bind(&TestDynamicModel::costLine, this, _1, _2), boost::bind(&TestDynamicModel::sampleSpace, this, _1), 0.05, 0.2, 0.4 );
@@ -513,22 +513,14 @@ public:
         // loop variables
         ros::Time last_time = ros::Time::now();
         KDL::Frame r_HAND_target;
-//        r_HAND_target = KDL::Frame(KDL::Rotation::RotZ(randomUniform(-PI, PI)), KDL::Vector(randomUniform(0,2), randomUniform(-1,1), 0));
         int loop_counter = 10000;
         ros::Rate loop_rate(500);
         bool pose_reached  = false;
         int try_idx = 50;
         std::list<Eigen::VectorXd > target_path;
-        std::vector<SphereQ > spheres;
+//        std::vector<SphereQ > spheres;
         std::list<Eigen::VectorXd > realized_path;
 
-        std::vector<Eigen::VectorXd > eig_COL_vec(4);
-        int eig_COL_vec_idx = 0;
-
-        std::vector<Eigen::VectorXd > torque_COL_vec(4);
-        int torque_COL_vec_idx = 0;
-
-        Eigen::VectorXd const_torque(ndof);
         KDL::Twist diff_target;
         KDL::Frame r_HAND_start;
 
@@ -539,7 +531,7 @@ public:
                 kin_model.calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), q);
             }
             // calculate inertia matrix for whole body
-            dyn_model.computeM(q);
+            dyn_model->computeM(q);
 
             if (loop_counter > 1500 || pose_reached) {
                 if (pose_reached || try_idx > 15) {
@@ -575,13 +567,9 @@ public:
                     }
                     publishTransform(r_HAND_target, "effector_dest");
 
-                    for (int q_idx = 0; q_idx < ndof; q_idx++) {
-                        const_torque(q_idx) = 0.0;
-                    }
-
                     r_map_.resetPenalty();
                     realized_path.clear();
-                    spheres.clear();
+//                    spheres.clear();
                     penalty_points_.clear();
 
                     // get the current pose
@@ -745,12 +733,12 @@ public:
             //
             Eigen::VectorXd torque_JLC(ndof);
             Eigen::MatrixXd N_JLC(ndof, ndof);
-            task_JLC.compute(q, dq, dyn_model.I, torque_JLC, N_JLC);
+            task_JLC.compute(q, dq, dyn_model->getM(), torque_JLC, N_JLC);
 
             //
             // collision constraints
             //
-            std::vector<CollisionInfo> link_collisions;
+            std::vector<self_collision::CollisionInfo> link_collisions;
             getCollisionPairs(col_model, links_fk, activation_dist, link_collisions);
 
             Eigen::VectorXd torque_COL(ndof);
@@ -759,7 +747,7 @@ public:
             }
             Eigen::MatrixXd N_COL(Eigen::MatrixXd::Identity(ndof, ndof));
 
-            task_COL.compute(q, dq, dyn_model.invI, links_fk, link_collisions, torque_COL, N_COL);
+            task_COL.compute(q, dq, dyn_model->getInvM(), links_fk, link_collisions, torque_COL, N_COL);
 
             //
             // effector task
@@ -813,25 +801,25 @@ public:
                 J_r_HAND(2, q_idx) = J_r_HAND_6(5, q_idx);
             }
 
-            task_HAND.compute(r_HAND_diff, Kc, Dxi, J_r_HAND, dq, dyn_model.invI, torque_HAND, N_HAND);
+            task_HAND.compute(r_HAND_diff, Kc, Dxi, J_r_HAND, dq, dyn_model->getInvM(), torque_HAND, N_HAND);
 
-            Eigen::VectorXd torque_QA(ndof);
-            Eigen::MatrixXd N_QA(ndof, ndof);
-            task_QA.compute(q, dq, dyn_model.I, spheres, torque_QA, N_QA);
+//            Eigen::VectorXd torque_QA(ndof);
+//            Eigen::MatrixXd N_QA(ndof, ndof);
+//            task_QA.compute(q, dq, dyn_model->getM(), spheres, torque_QA, N_QA);
 
             //
             // repulsive field
             //
-            std::vector<CollisionInfo> link_collisions2;
-            getRepulsiveForces(col_model, links_fk, activation_dist2, r_HAND_target.p, link_collisions2);
+//            std::vector<self_collision::CollisionInfo> link_collisions2;
+//            getRepulsiveForces(col_model, links_fk, activation_dist2, r_HAND_target.p, link_collisions2);
 
-            Eigen::VectorXd torque_COL2(ndof);
-            for (int q_idx = 0; q_idx < ndof; q_idx++) {
-                torque_COL2[q_idx] = 0.0;
-            }
-            Eigen::MatrixXd N_COL2(Eigen::MatrixXd::Identity(ndof, ndof));
+//            Eigen::VectorXd torque_COL2(ndof);
+//            for (int q_idx = 0; q_idx < ndof; q_idx++) {
+//                torque_COL2[q_idx] = 0.0;
+//            }
+//            Eigen::MatrixXd N_COL2(Eigen::MatrixXd::Identity(ndof, ndof));
 
-            task_COL2.compute(q, dq, dyn_model.invI, links_fk, link_collisions2, torque_COL2, N_COL2);
+//            task_COL2.compute(q, dq, dyn_model->getInvM(), links_fk, link_collisions2, torque_COL2, N_COL2);
 
 
 //            torque = torque_HAND + N_HAND * (torque_JLC + N_JLC.transpose() * torque_COL);// + N_HAND.transpose() * torque_QA)));
@@ -841,17 +829,9 @@ public:
 //            torque = torque_JLC + N_JLC.transpose() * (torque_COL + (N_COL.transpose() * (torque_HAND + N_HAND.transpose() * torque_QA)));
 //            torque = torque_JLC + N_JLC.transpose() * (torque_COL + (N_COL.transpose() * (torque_COL2 + N_COL2.transpose() * torque_HAND)));
 
-            torque_COL_vec[torque_COL_vec_idx] = torque_COL;
-            torque_COL_vec_idx = (torque_COL_vec_idx + 1) % torque_COL_vec.size();
-
-
-
-//            torque = torque_JLC + N_JLC.transpose() * torque_COL;
-//            torque = torque_JLC + N_JLC.transpose() * torque_HAND;
-//            torque = torque_HAND;
 
             // simulate one step
-            dyn_model.accel(ddq, q, dq, torque);
+            dyn_model->accel(ddq, q, dq, torque);
             float time_d = 0.01;
             for (int q_idx = 0; q_idx < ndof; q_idx++) {
                 dq[q_idx] += ddq[q_idx] * time_d;
@@ -868,7 +848,7 @@ public:
                 ros::Time last_time = ros::Time::now();
             }
             ros::spinOnce();
-//            loop_rate.sleep();
+            loop_rate.sleep();
         }
 
     }

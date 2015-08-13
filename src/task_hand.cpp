@@ -74,8 +74,9 @@
 
             // code form cartesian_impedance.h
             JT = J.transpose();
-            lu_.compute(invI);
-            Eigen::MatrixXd Mi = lu_.inverse();
+//            lu_.compute(invI);
+//            Eigen::MatrixXd Mi = lu_.inverse();
+            Eigen::MatrixXd Mi = invI;
 
             tmpNK_.noalias() = J * Mi;
             A.noalias() = tmpNK_ * JT;

@@ -44,7 +44,7 @@
 
 #include "planar5_dyn_model.h"
 #include <collision_convex_model/collision_convex_model.h>
-#include "kin_model.h"
+#include "kin_model/kin_model.h"
 #include "marker_publisher.h"
 #include "task_col.h"
 #include "task_hand.h"
@@ -130,7 +130,7 @@ public:
         srand(time(NULL));
 
         // dynamics model
-        DynModelPlanar5 dyn_model;
+        boost::shared_ptr<DynamicModel > dyn_model( new DynModelPlanar5() );
 
         std::string robot_description_str;
         std::string robot_semantic_description_str;
@@ -171,7 +171,7 @@ public:
         ddq.resize( ndof );
         torque.resize( ndof );
         for (int q_idx = 0; q_idx < ndof; q_idx++) {
-            q[q_idx] = 0.1;
+            q[q_idx] = -0.1;
             dq[q_idx] = 0.0;
             ddq[q_idx] = 0.0;
             torque[q_idx] = 0.0;
@@ -216,10 +216,10 @@ public:
         ros::Time last_time = ros::Time::now();
         KDL::Frame r_HAND_target;
         int loop_counter = 10000;
-        ros::Rate loop_rate(100);
+        ros::Rate loop_rate(500);
         while (ros::ok()) {
 
-            if (loop_counter > 500) {
+            if (loop_counter > 1500) {
                 r_HAND_target = KDL::Frame(KDL::Rotation::RotZ(randomUniform(-PI, PI)), KDL::Vector(randomUniform(0,2), randomUniform(-1,1), 0));
 
                 publishTransform(r_HAND_target, "effector_dest");
@@ -231,19 +231,20 @@ public:
             for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
                 kin_model.calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), q);
             }
-            dyn_model.computeM(q);
+            dyn_model->computeM(q);
+
 
             //
             // joint limit avoidance
             //
             Eigen::VectorXd torque_JLC(ndof);
             Eigen::MatrixXd N_JLC(ndof, ndof);
-            task_JLC.compute(q, dq, dyn_model.I, torque_JLC, N_JLC);
+            task_JLC.compute(q, dq, dyn_model->getM(), torque_JLC, N_JLC);
 
             //
             // collision constraints
             //
-            std::vector<CollisionInfo> link_collisions;
+            std::vector<self_collision::CollisionInfo> link_collisions;
             getCollisionPairs(col_model, links_fk, activation_dist, link_collisions);
 
             Eigen::VectorXd torque_COL(ndof);
@@ -252,25 +253,32 @@ public:
             }
             Eigen::MatrixXd N_COL(Eigen::MatrixXd::Identity(ndof, ndof));
 
-            task_COL.compute(q, dq, dyn_model.invI, links_fk, link_collisions, torque_COL, N_COL);
+            task_COL.compute(q, dq, dyn_model->getInvM(), links_fk, link_collisions, torque_COL, N_COL);
 
             //
             // effector task
             //
             Eigen::VectorXd torque_HAND(ndof);
+            Eigen::MatrixXd N_HAND(ndof, ndof);
 
             KDL::Frame T_B_E = links_fk[effector_idx];
             KDL::Frame r_HAND_current = T_B_E;
+
             KDL::Twist diff = KDL::diff(r_HAND_current, r_HAND_target, 1.0);
             Eigen::VectorXd r_HAND_diff(3);
             r_HAND_diff[0] = diff[0];
             r_HAND_diff[1] = diff[1];
             r_HAND_diff[2] = diff[5];
 
+            KDL::Twist diff_goal = KDL::diff(r_HAND_current, r_HAND_target, 1.0);
+
+            if (diff_goal.vel.Norm() < 0.06 && diff.rot.Norm() < 5.0/180.0 * PI) {
+            }
+
             Eigen::VectorXd Kc(3);
             Kc[0] = 10.0;
             Kc[1] = 10.0;
-            Kc[2] = 1.0;
+            Kc[2] = 1.00;
             Eigen::VectorXd Dxi(3);
             Dxi[0] = 0.7;
             Dxi[1] = 0.7;
@@ -284,16 +292,13 @@ public:
                 J_r_HAND(2, q_idx) = J_r_HAND_6(5, q_idx);
             }
 
-            Eigen::MatrixXd N_HAND(ndof, ndof);
-            task_HAND.compute(r_HAND_diff, Kc, Dxi, J_r_HAND, dq, dyn_model.invI, torque_HAND, N_HAND);
+            task_HAND.compute(r_HAND_diff, Kc, Dxi, J_r_HAND, dq, dyn_model->getInvM(), torque_HAND, N_HAND);
 
-            torque = torque_JLC + N_JLC.transpose() * (torque_COL + (N_COL.transpose() * torque_HAND));
-//            torque = torque_JLC + N_JLC.transpose() * torque_COL;
-//            torque = torque_JLC + N_JLC.transpose() * torque_HAND;
-//            torque = torque_HAND;
+            torque = torque_JLC + N_JLC.transpose() * (torque_COL + (N_COL.transpose() * (torque_HAND)));// + N_HAND.transpose() * torque_COL2)));
+
 
             // simulate one step
-            dyn_model.accel(ddq, q, dq, torque);
+            dyn_model->accel(ddq, q, dq, torque);
             float time_d = 0.01;
             for (int q_idx = 0; q_idx < ndof; q_idx++) {
                 dq[q_idx] += ddq[q_idx] * time_d;

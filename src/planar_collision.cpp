@@ -187,7 +187,7 @@
     }
 
     void getCollisionPairs(const boost::shared_ptr<self_collision::CollisionModel> &col_model, const std::vector<KDL::Frame > &links_fk,
-                            double activation_dist, std::vector<CollisionInfo> &link_collisions) {
+                            double activation_dist, std::vector<self_collision::CollisionInfo> &link_collisions) {
         // self collision
         for (self_collision::CollisionModel::CollisionPairs::const_iterator it = col_model->enabled_collisions.begin(); it != col_model->enabled_collisions.end(); it++) {
             int link1_idx = it->first;
@@ -200,7 +200,7 @@
                     double dist = 0.0;
                     KDL::Vector p1_B, p2_B, n1_B, n2_B;
                     if (checkCollision(*col1, *col2, T_B_L1, T_B_L2, activation_dist, dist, p1_B, p2_B, n1_B, n2_B)) {
-                        CollisionInfo col_info;
+                        self_collision::CollisionInfo col_info;
                         col_info.link1_idx = link1_idx;
                         col_info.link2_idx = link2_idx;
                         col_info.dist = dist;
@@ -234,7 +234,7 @@
                     KDL::Vector p1_B, p2_B, n1_B, n2_B;
                     if (checkCollision(*col1, *col2, T_B_L1, T_B_L2, activation_dist, dist, p1_B, p2_B, n1_B, n2_B)) {
                         return true;
-//                        CollisionInfo col_info;
+//                        self_collision::CollisionInfo col_info;
 //                        col_info.link1_idx = link1_idx;
 //                        col_info.link2_idx = link2_idx;
 //                        col_info.dist = dist;
@@ -251,7 +251,7 @@
     }
 
     void getRepulsiveForces(const boost::shared_ptr<self_collision::CollisionModel> &col_model, const std::vector<KDL::Frame > &links_fk,
-                            double activation_dist, const KDL::Vector &center, std::vector<CollisionInfo> &link_collisions) {
+                            double activation_dist, const KDL::Vector &center, std::vector<self_collision::CollisionInfo> &link_collisions) {
 
         boost::shared_ptr< self_collision::Collision > pcol(new self_collision::Collision());
         pcol->geometry.reset(new self_collision::Sphere());
@@ -275,7 +275,7 @@
                 double dist = 0.0;
                 KDL::Vector p1_B, p2_B, n1_B, n2_B;
                 if (checkCollision(pcol, *col, T_B_L1, T_B_L2, activation_dist, dist, p1_B, p2_B, n1_B, n2_B)) {
-                    CollisionInfo col_info;
+                    self_collision::CollisionInfo col_info;
                     col_info.link1_idx = base_link_idx;
                     col_info.link2_idx = link_idx;
                     col_info.dist = dist;
