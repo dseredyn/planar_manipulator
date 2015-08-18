@@ -32,8 +32,23 @@
 #include "random_uniform.h"
 
 #include <stdlib.h>
+#include <boost/random/mersenne_twister.hpp>
+#include <boost/random/normal_distribution.hpp>
 
 double randomUniform(double min, double max) {
     return min + (max - min) * (double)rand() / (double)RAND_MAX;
+}
+
+void randomUnitQuaternion(Eigen::VectorXd &quat) {
+    static boost::random::mt19937 rng(time(NULL));
+    static boost::random::normal_distribution<> normal;
+
+    do {
+        quat(0) = normal(rng);
+        quat(1) = normal(rng);
+        quat(2) = normal(rng);
+        quat(3) = normal(rng);
+    } while (quat.norm() < 0.00001);
+    quat.normalize();
 }
 

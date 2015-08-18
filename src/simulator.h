@@ -29,70 +29,65 @@
 // Author: Dawid Seredynski
 //
 
-#ifndef RRT_H__
-#define RRT_H__
+#ifndef SIMULATOR_H__
+#define SIMULATOR_H__
+
+//#include <ros/ros.h>
+//#include "ros/package.h"
+//#include <sensor_msgs/JointState.h>
+//#include <visualization_msgs/MarkerArray.h>
+//#include <tf/transform_broadcaster.h>
+#include <boost/bind.hpp>
+
+#include <string>
+#include <stdlib.h>
+#include <stdio.h>
 
 #include "Eigen/Dense"
+//#include "Eigen/LU"
 
-#include "marker_publisher.h"
+#include "planar5_dyn_model.h"
+#include <collision_convex_model/collision_convex_model.h>
 #include "kin_model/kin_model.h"
-#include "simulator.h"
+//#include "marker_publisher.h"
+#include "task_col.h"
+#include "task_hand.h"
+#include "task_jlc.h"
+//#include "random_uniform.h"
 
-class RRTState {
-public:
-    KDL::Frame T_B_E_;
-
-    std::vector<Eigen::VectorXd > q_vec_;
-};
-
-class RRT {
-public:
-
-    RRT(int ndof,
-            boost::function<bool(const KDL::Frame &x)> collision_func,
-            boost::function<void(KDL::Frame &sample)> sampleSpace_func,
-            double collision_check_step, double steer_dist, double near_dist,
-            const boost::shared_ptr<KinematicModel> &kin_model,
-            const std::string &effector_name,
-            boost::shared_ptr<DynamicsSimulatorHandPose> &sim);
-
-    bool isPoseValid(const KDL::Frame &x) const;
-
-    void sampleSpace(KDL::Frame &sample) const;
-
-    bool sampleFree(KDL::Frame &sample_free) const;
-
-    int nearest(const KDL::Frame &x) const;
-
-    void steer(const KDL::Frame &x_from, const KDL::Frame &x_to, double steer_dist_lin, double steer_dist_rot, KDL::Frame &x) const;
-
-    bool collisionFree(const Eigen::VectorXd &q_from, const KDL::Frame &x_from, const KDL::Frame &x_to, int try_idx, Eigen::VectorXd &q_to) const;
-
-    double costLine(const KDL::Frame &x1, const KDL::Frame &x2) const;
-
-    double costLine(int x1_idx, int x2_idx) const;
-
-    double cost(int q_idx) const;
-
-    void getPath(int q_idx, std::list<int > &path) const;
-
-    void plan(const Eigen::VectorXd &start, const KDL::Frame &x_goal, double goal_tolerance, std::list<KDL::Frame > &path, MarkerPublisher &markers_pub);
-
-    int addTreeMarker(MarkerPublisher &markers_pub, int m_id) const;
+class DynamicsSimulatorHandPose {
+private:
+    DynamicsSimulatorHandPose(const DynamicsSimulatorHandPose&);
+    DynamicsSimulatorHandPose &operator=(const DynamicsSimulatorHandPose&);
 
 protected:
-    boost::function<bool(const KDL::Frame &x)> collision_func_;
-    boost::function<void(KDL::Frame &sample)> sampleSpace_func_;
-    std::map<int, RRTState > V_;
-    std::map<int, int > E_;
-    double collision_check_step_;
     int ndof_;
-    double steer_dist_;
-    double near_dist_;
+    int effector_idx_;
+    Eigen::VectorXd q_, dq_, ddq_, torque_;
+    const boost::shared_ptr<self_collision::CollisionModel> &col_model_;
     const boost::shared_ptr<KinematicModel> &kin_model_;
+    const boost::shared_ptr<DynamicModel > &dyn_model_;
+    double activation_dist_;
+    boost::shared_ptr<Task_JLC> task_JLC_;
+    boost::shared_ptr<Task_COL> task_COL_;
+    boost::shared_ptr<Task_HAND> task_HAND_;
+    std::vector<KDL::Frame > links_fk_;
+    KDL::Frame r_HAND_target_;
+    KinematicModel::Jacobian J_r_HAND_6_, J_r_HAND_;
     std::string effector_name_;
-    boost::shared_ptr<DynamicsSimulatorHandPose> &sim_;
+public:
+
+    DynamicsSimulatorHandPose(int ndof, const std::string &effector_name, const boost::shared_ptr<self_collision::CollisionModel> &col_model,
+                        const boost::shared_ptr<KinematicModel> &kin_model,
+                        const boost::shared_ptr<DynamicModel > &dyn_model,
+                        const std::vector<std::string > &joint_names);
+
+    void setState(const Eigen::VectorXd &q, const Eigen::VectorXd &dq, const Eigen::VectorXd &ddq);
+    void getState(Eigen::VectorXd &q, Eigen::VectorXd &dq, Eigen::VectorXd &ddq);
+    void setTarget(const KDL::Frame &r_HAND_target);
+    void oneStep(const KDL::Twist &diff);
+    void oneStep();
 };
 
-#endif  // RRT_H__
+#endif  // SIMULATOR_H__
 

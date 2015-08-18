@@ -32,7 +32,11 @@
 #ifndef RANDOM_UNIFORM_H__
 #define RANDOM_UNIFORM_H__
 
+#include "Eigen/Dense"
+
 double randomUniform(double min, double max);
+
+void randomUnitQuaternion(Eigen::VectorXd &quat);
 
 #endif  // RANDOM_UNIFORM_H__
 
