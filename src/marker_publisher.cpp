@@ -48,6 +48,10 @@ void MarkerPublisher::publish() {
     marker_array_.markers.clear();
 }
 
+void MarkerPublisher::clear() {
+    marker_array_.markers.clear();
+}
+
 int MarkerPublisher::addSinglePointMarker(int m_id, const KDL::Vector &pos, double r, double g, double b, double a, double size, const std::string &frame_id) {
     visualization_msgs::Marker marker;
     marker.header.frame_id = frame_id;
@@ -112,7 +116,7 @@ int MarkerPublisher::addVectorMarker(int m_id, const KDL::Vector &v1, const KDL:
 int MarkerPublisher::addCapsule(int m_id, const KDL::Frame &fr, double length, double radius, const std::string &frame_id) {
 
 	KDL::Vector zero;
-	KDL::Vector v(0, 0, length);
+	KDL::Vector v(0,0,length);
 	KDL::Vector v2 = (fr * v) - (fr * zero);
 
 	visualization_msgs::Marker marker;

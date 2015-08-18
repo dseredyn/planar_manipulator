@@ -42,6 +42,7 @@ public:
     ~MarkerPublisher();
 
     void publish();
+    void clear();
 
     int addSinglePointMarker(int m_id, const KDL::Vector &pos, double r, double g, double b, double a, double size, const std::string &frame_id);
     int addVectorMarker(int m_id, const KDL::Vector &v1, const KDL::Vector &v2, double r, double g, double b, double a, double size, const std::string &frame_id);
