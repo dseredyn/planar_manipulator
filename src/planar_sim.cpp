@@ -299,11 +299,12 @@ public:
 
 
             // simulate one step
+            Eigen::VectorXd prev_ddq(ddq), prev_dq(dq);
             dyn_model->accel(ddq, q, dq, torque);
             float time_d = 0.01;
             for (int q_idx = 0; q_idx < ndof; q_idx++) {
-                dq[q_idx] += ddq[q_idx] * time_d;
-                q[q_idx] += dq[q_idx] * time_d;
+                dq[q_idx] += (prev_ddq[q_idx] + ddq[q_idx]) / 2.0 * time_d;
+                q[q_idx] += (prev_dq[q_idx] + dq[q_idx]) / 2.0 * time_d;
             }
 
             // publish markers and robot state with limited rate
