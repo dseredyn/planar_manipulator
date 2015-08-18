@@ -16,10 +16,12 @@ include_directories(${catkin_INCLUDE_DIRS} ${Eigen_INCLUDE_DIRS} ${USE_OROCOS_IN
 add_executable(planar_sim src/planar_sim.cpp src/planar5_dyn_model.cpp src/marker_publisher.cpp src/task_col.cpp src/task_hand.cpp src/task_jlc.cpp src/random_uniform.cpp)
 add_executable(planar_sim_planer_rrt src/planar_sim_planer_rrt.cpp src/planar5_dyn_model.cpp src/marker_publisher.cpp src/task_col.cpp src/task_hand.cpp src/task_jlc.cpp src/reachability_map.cpp src/random_uniform.cpp src/rrt_star.cpp)
 add_executable(test_ompl src/test_ompl.cpp src/marker_publisher.cpp src/random_uniform.cpp)
+add_executable(planar_rrt src/planar_rrt.cpp src/planar5_dyn_model.cpp src/marker_publisher.cpp src/task_col.cpp src/task_hand.cpp src/task_jlc.cpp src/reachability_map.cpp src/random_uniform.cpp src/rrt_star.cpp src/rrt.cpp)
 
 target_link_libraries(planar_sim ${catkin_LIBRARIES})
 target_link_libraries(planar_sim_planer_rrt ${catkin_LIBRARIES})
 target_link_libraries(test_ompl ${catkin_LIBRARIES} ${OMPL_LIBRARIES})
+target_link_libraries(planar_rrt ${catkin_LIBRARIES})
 
 catkin_package(
     DEPENDS ompl eigen
