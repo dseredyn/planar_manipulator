@@ -172,7 +172,7 @@ public:
         //
         // kinematic model
         //
-        KinematicModel kin_model(robot_description_str, joint_names);
+        boost::shared_ptr<KinematicModel> kin_model( new KinematicModel(robot_description_str, joint_names) );
 
         KinematicModel::Jacobian J_r_HAND_6, J_r_HAND;
         J_r_HAND_6.resize(6, ndof);
@@ -218,7 +218,7 @@ public:
 
             // calculate forward kinematics for all links
             for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
-                kin_model.calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), q);
+                kin_model->calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), q);
             }
             dyn_model->computeM(q);
 
@@ -285,7 +285,7 @@ public:
             Dxi[1] = 0.7;
             Dxi[2] = 0.7;
 
-            kin_model.getJacobian(J_r_HAND_6, effector_name, q);
+            kin_model->getJacobian(J_r_HAND_6, effector_name, q);
 
             for (int q_idx = 0; q_idx < ndof; q_idx++) {
                 J_r_HAND(0, q_idx) = J_r_HAND_6(0, q_idx);

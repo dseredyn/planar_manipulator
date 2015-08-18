@@ -46,7 +46,7 @@
     ReachabilityMap::~ReachabilityMap() {
     }
 
-    void ReachabilityMap::generate(const KinematicModel &kin_model, const boost::shared_ptr<self_collision::CollisionModel> &col_model, const std::string &effector_name, int ndof, const Eigen::VectorXd &lower_limit, const Eigen::VectorXd &upper_limit) {
+    void ReachabilityMap::generate(const boost::shared_ptr<KinematicModel> &kin_model, const boost::shared_ptr<self_collision::CollisionModel> &col_model, const std::string &effector_name, int ndof, const Eigen::VectorXd &lower_limit, const Eigen::VectorXd &upper_limit) {
         std::list<Eigen::VectorXd > ep_B_list;
         for (int dim_idx = 0; dim_idx < dim_; dim_idx++) {
             ep_min_(dim_idx) = 1000000.0;
@@ -67,7 +67,7 @@
 
             // calculate forward kinematics for all links
             for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
-                kin_model.calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), tmp_q);
+                kin_model->calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), tmp_q);
             }
 
             if (self_collision::checkCollision(col_model, links_fk, excluded_link_idx)) {

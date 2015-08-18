@@ -181,12 +181,12 @@ public:
         sample(1) = randomUniform(-1,1);
     }
 
-    bool checkCollisionQ5(const Eigen::VectorXd &x, const boost::shared_ptr<self_collision::CollisionModel> &col_model, const KinematicModel &kin_model) {
+    bool checkCollisionQ5(const Eigen::VectorXd &x, const boost::shared_ptr<self_collision::CollisionModel> &col_model, const boost::shared_ptr<KinematicModel> &kin_model) {
         std::vector<self_collision::CollisionInfo> link_collisions;
         std::vector<KDL::Frame > links_fk(col_model->getLinksCount());
         // calculate forward kinematics for all links
         for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
-            kin_model.calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), x);
+            kin_model->calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), x);
         }
         self_collision::getCollisionPairs(col_model, links_fk, 0.05, link_collisions);
         if (link_collisions.size() > 0) {
@@ -333,7 +333,7 @@ public:
         //
         // kinematic model
         //
-        KinematicModel kin_model(robot_description_str, joint_names);
+        boost::shared_ptr<KinematicModel> kin_model( new KinematicModel(robot_description_str, joint_names) );
 
         KinematicModel::Jacobian J_r_HAND_6, J_r_HAND;
         J_r_HAND_6.resize(6, ndof);
@@ -414,7 +414,7 @@ public:
             }
 
             KDL::Frame T_B_E;
-            kin_model.calculateFk(T_B_E, col_model->getLinkName(effector_idx), xe);
+            kin_model->calculateFk(T_B_E, col_model->getLinkName(effector_idx), xe);
             publishTransform(T_B_E, "effector_dest");
 
             std::list<Eigen::VectorXd > path;
@@ -432,7 +432,7 @@ public:
                 std::vector<KDL::Frame > links_fk(col_model->getLinksCount());
                 // calculate forward kinematics for all links
                 for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
-                    kin_model.calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), x);
+                    kin_model->calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), x);
                 }
 
                 publishJointState(x, joint_names);
@@ -505,7 +505,7 @@ public:
 
             // calculate forward kinematics for all links
             for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
-                kin_model.calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), q);
+                kin_model->calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), q);
             }
             // calculate inertia matrix for whole body
             dyn_model->computeM(q);
@@ -612,7 +612,7 @@ public:
                         // get the current pose
                         // calculate forward kinematics for all links
                         for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
-                            kin_model.calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), saved_q);
+                            kin_model->calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), saved_q);
                         }
 
                         std::cout << "replanning the path..." << std::endl;
@@ -661,7 +661,7 @@ public:
                     // get the current pose
                     // calculate forward kinematics for all links
                     for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
-                        kin_model.calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), q);
+                        kin_model->calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), q);
                     }
 
                     Eigen::VectorXd xs(2);
@@ -770,7 +770,7 @@ public:
             Dxi[1] = 0.7;
             Dxi[2] = 0.7;
 
-            kin_model.getJacobian(J_r_HAND_6, effector_name, q);
+            kin_model->getJacobian(J_r_HAND_6, effector_name, q);
 
             for (int q_idx = 0; q_idx < ndof; q_idx++) {
                 J_r_HAND(0, q_idx) = J_r_HAND_6(0, q_idx);

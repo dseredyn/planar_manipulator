@@ -31,7 +31,7 @@
 
 #include "task_col.h"
 
-Task_COL::Task_COL(int ndof, double activation_dist, double Fmax, const KinematicModel &kin_model, const boost::shared_ptr<self_collision::CollisionModel> &col_model) :
+Task_COL::Task_COL(int ndof, double activation_dist, double Fmax, const boost::shared_ptr<KinematicModel> &kin_model, const boost::shared_ptr<self_collision::CollisionModel> &col_model) :
         ndof_(ndof),
         activation_dist_(activation_dist),
         Fmax_(Fmax),
@@ -68,7 +68,7 @@ void Task_COL::compute(const Eigen::VectorXd &q, const Eigen::VectorXd &dq, cons
                 }
 */
                 KinematicModel::Jacobian jac1(6, ndof_), jac2(6, ndof_);
-                kin_model_.getJacobiansForPairX(jac1, jac2, link1_name, p1_L1, link2_name, p2_L2, q);
+                kin_model_->getJacobiansForPairX(jac1, jac2, link1_name, p1_L1, link2_name, p2_L2, q);
 
                 double depth = (activation_dist_ - it->dist);
 

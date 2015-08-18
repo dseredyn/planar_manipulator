@@ -44,7 +44,7 @@ public:
 
     ~ReachabilityMap();
 
-    void generate(const KinematicModel &kin_model, const boost::shared_ptr<self_collision::CollisionModel> &col_model, const std::string &effector_name, int ndof, const Eigen::VectorXd &lower_limit, const Eigen::VectorXd &upper_limit);
+    void generate(const boost::shared_ptr<KinematicModel> &kin_model, const boost::shared_ptr<self_collision::CollisionModel> &col_model, const std::string &effector_name, int ndof, const Eigen::VectorXd &lower_limit, const Eigen::VectorXd &upper_limit);
 
     double getValue(const Eigen::VectorXd &x) const;
 
