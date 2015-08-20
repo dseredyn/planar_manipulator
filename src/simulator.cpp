@@ -153,7 +153,7 @@
                 Eigen::VectorXd Kc(3);
                 Kc[0] = 10.0;
                 Kc[1] = 10.0;
-                Kc[2] = 1.00;
+                Kc[2] = 0.2;
                 Eigen::VectorXd Dxi(3);
                 Dxi[0] = 0.7;
                 Dxi[1] = 0.7;
@@ -175,7 +175,7 @@
                 // simulate one step
                 Eigen::VectorXd prev_ddq(ddq_), prev_dq(dq_);
                 dyn_model_->accel(ddq_, q_, dq_, torque_);
-                float time_d = 0.01;
+                float time_d = 0.005;
                 for (int q_idx = 0; q_idx < ndof_; q_idx++) {
                     dq_[q_idx] += (prev_ddq[q_idx] + ddq_[q_idx]) / 2.0 * time_d;
                     q_[q_idx] += (prev_dq[q_idx] + dq_[q_idx]) / 2.0 * time_d;

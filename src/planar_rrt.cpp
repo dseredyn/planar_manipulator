@@ -54,6 +54,7 @@
 #include "planer_utils/random_uniform.h"
 #include "planer_utils/reachability_map.h"
 #include "rrt_star.h"
+#include "simulator.h"
 
 class PathsGenerator {
 protected:
@@ -70,13 +71,13 @@ public:
         lower_bound_(lower_bound),
         upper_bound_(upper_bound)
     {
-        r_map_.reset( new ReachabilityMap(0.1, ndim) );
+        r_map_.reset( new ReachabilityMap(0.05, ndim_) );
         r_map_->generate(lower_bound, upper_bound);
 
-        r_map_tmp_.reset( new ReachabilityMap(0.1, 2) );
+        r_map_tmp_.reset( new ReachabilityMap(0.05, ndim_) );
         r_map_tmp_->generate(lower_bound, upper_bound);
 
-        rrt_.reset( new RRTStar(2, boost::bind(&PathsGenerator::checkCollision, this, _1, col_model),
+        rrt_.reset( new RRTStar(ndim_, boost::bind(&PathsGenerator::checkCollision, this, _1, col_model),
                     boost::bind(&PathsGenerator::costLine, this, _1, _2), boost::bind(&PathsGenerator::sampleSpace, this, _1), 0.05, 0.2, 0.4 ) );
     }
 
@@ -180,11 +181,6 @@ public:
         return ((r_map->getMaxValue() * r_map->getValue((x1+x2)/2.0)) + 1.0) * norm;
     }
 
-    void sampleSpace(Eigen::VectorXd &sample) const {
-        sample(0) = randomUniform(0,1.7);
-        sample(1) = randomUniform(-1,1);
-    }
-
     bool checkCollision(const Eigen::VectorXd &x, const boost::shared_ptr<self_collision::CollisionModel> &col_model) {
         // create dummy object
         boost::shared_ptr< self_collision::Collision > pcol = self_collision::createCollisionSphere(0.1, KDL::Frame(KDL::Vector(x[0], x[1], 0)));
@@ -239,26 +235,15 @@ public:
 
         int ndof = joint_names.size();
 
-        Eigen::VectorXd q, dq, ddq, torque;
-        q.resize( ndof );
-        dq.resize( ndof );
-        ddq.resize( ndof );
-        torque.resize( ndof );
-        for (int q_idx = 0; q_idx < ndof; q_idx++) {
-            q[q_idx] = -0.1;
-            dq[q_idx] = 0.0;
-            ddq[q_idx] = 0.0;
-        }
-
-        Eigen::VectorXd saved_q, saved_dq, saved_ddq;
+        Eigen::VectorXd saved_q(ndof), saved_dq(ndof), saved_ddq(ndof);
         saved_q.resize( ndof );
         saved_dq.resize( ndof );
         saved_ddq.resize( ndof );
 
         for (int q_idx = 0; q_idx < ndof; q_idx++) {
-            saved_q[q_idx] = q[q_idx];
-            saved_dq[q_idx] = dq[q_idx];
-            saved_ddq[q_idx] = ddq[q_idx];
+            saved_q[q_idx] = -0.1;
+            saved_dq[q_idx] = 0.0;
+            saved_ddq[q_idx] = 0.0;
         }
 
         std::string effector_name = "effector";
@@ -307,345 +292,161 @@ public:
 
         PathsGenerator pg(2, lower_bound, upper_bound, col_model);
 
-/*
-        // TEST: RRT paths generation
-        Eigen::VectorXd lower_bound(2);
-        Eigen::VectorXd upper_bound(2);
-        lower_bound(0) = -0.5;
-        upper_bound(0) = 2.0;
-        lower_bound(1) = -1.0;
-        upper_bound(1) = 1.0;
-        r_map.generate(lower_bound, upper_bound);
-
-        ReachabilityMap r_map_tmp(0.1, 2);
-        r_map_tmp.generate(lower_bound, upper_bound);
-        while (ros::ok()) {
-
-            Eigen::VectorXd xs(2), xe(2);
-            sampleSpace(xs);
-            sampleSpace(xe);
-
-            if (!rrt.isStateValid(xs) || !rrt.isStateValid(xe)) {
-                continue;
-            }
-
-            r_map.clear();
-            int m_id_path = 3000;
-            for (int try_idx = 0; try_idx < 10; try_idx++) {
-                std::cout << "try_idx: " << try_idx << std::endl;
-                std::list<Eigen::VectorXd > path;
-                rrt.plan(xs, xe, 0.05, path);
-
-                r_map_tmp.clear();
-                for (double f = 0.0; f < 1.0; f += 0.001) {
-                    Eigen::VectorXd pt(2);
-                    getPointOnPath(path, f, pt);
-                    r_map_tmp.setValue(pt, 1);
-                }
-
-                r_map_tmp.grow();
-                r_map_tmp.grow();
-                r_map_.addMap(r_map_tmp);
-                int m_id_map = 5000;
-                for (double x = -1.8; x < 1.8; x += 0.1) {
-                    for (double y = -1.8; y < 1.8; y += 0.1) {
-                        Eigen::VectorXd xs(2);
-                        xs(0) = x;
-                        xs(1) = y;
-                        double val = r_map.getValue(xs);
-                        m_id_map = markers_pub_.addSinglePointMarker(m_id_map, KDL::Vector(xs(0), xs(1), 0), 0, 0, 1, 1, 0.1*val, "base");
-                    }
-                }
-
-                int m_id = 100;
-                m_id = rrt.addTreeMarker(markers_pub_, m_id);
-                m_id = markers_pub_.addSinglePointMarker(m_id, KDL::Vector(xe(0), xe(1), 0), 0, 0, 1, 1, 0.05, "base");
-                // draw path
-                for (std::list<Eigen::VectorXd >::const_iterator it1 = path.begin(), it2=++path.begin(); it2 != path.end(); it1++, it2++) {
-                    KDL::Vector pos1((*it1)(0), (*it1)(1), 0), pos2((*it2)(0), (*it2)(1), 0);
-                    m_id_path = markers_pub_.addVectorMarker(m_id_path, pos1, pos2, 1, 1, 1, 1, 0.01, "base");
-                }
-                markers_pub_.addEraseMarkers(m_id, 2000);
-                markers_pub_.addEraseMarkers(m_id_path, m_id_path+1000);
-                markers_pub_.addEraseMarkers(m_id_map, m_id_map+1000);
-                markers_pub_.publish();
-                ros::spinOnce();
-                ros::Duration(0.001).sleep();
-
-                getchar();
-            }
-        }
-
-        return;
-//*/
+        DynamicsSimulatorHandPose sim(ndof, effector_name, col_model, kin_model, dyn_model, joint_names);
+        sim.setState(saved_q, saved_dq, saved_ddq);
 
         // loop variables
         ros::Time last_time = ros::Time::now();
         KDL::Frame r_HAND_target;
         int loop_counter = 10000;
         ros::Rate loop_rate(500);
-        bool pose_reached  = false;
         int try_idx = 50;
         std::list<Eigen::VectorXd > target_path;
-        std::list<Eigen::VectorXd > realized_path;
 
         KDL::Twist diff_target;
         KDL::Frame r_HAND_start;
 
         while (ros::ok()) {
 
-            // calculate forward kinematics for all links
-            for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
-                kin_model->calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), q);
-            }
-            // calculate inertia matrix for whole body
-            dyn_model->computeM(q);
-
-            if (loop_counter > 1500 || pose_reached) {
-                if (pose_reached || try_idx > 15) {
-                    if (try_idx > 15) {
-                        std::cout << "Could not reach the pose" << std::endl;
-                        publishJointState(joint_state_pub_, q, joint_names);
-                        int m_id = 0;
-                        m_id = addRobotModelVis(markers_pub_, m_id, col_model, links_fk);
-                        ros::Time last_time = ros::Time::now();
-                    }
-                    else {
-                        std::cout << "Pose reached" << std::endl;
-                        publishJointState(joint_state_pub_, q, joint_names);
-                        int m_id = 0;
-                        m_id = addRobotModelVis(markers_pub_, m_id, col_model, links_fk);
-                        ros::Time last_time = ros::Time::now();
-                    }
-                    bool pose_found = false;
-                    Eigen::VectorXd xe(2);
-                    // set new random target pose
-                    for (int i = 0; i < 100; i++) {
-                        r_HAND_target = KDL::Frame(KDL::Rotation::RotZ(randomUniform(-PI, PI)), KDL::Vector(randomUniform(0,1.8), randomUniform(-1,1), 0));
-                        xe(0) = r_HAND_target.p.x();
-                        xe(1) = r_HAND_target.p.y();
-                        if (!checkCollision(xe, col_model)) {
-                            pose_found = true;
-                            break;
-                        }
-                    }
-                    if (!pose_found) {
-                        std::cout << "ERROR: could not find valid pose" << std::endl;
-                        return;
-                    }
-                    publishTransform(br, r_HAND_target, "effector_dest");
-
-                    // get the current pose
-                    Eigen::VectorXd xs(2);
-                    xs(0) = links_fk[effector_idx].p.x();
-                    xs(1) = links_fk[effector_idx].p.y();
-
-                    pg.reset(xs, xe);
-
-                    std::list<Eigen::VectorXd > path;
-                    if (!pg.getPath(path)) {
-                        std::cout << "could not plan end effector path" << std::endl;
-                        return;
-                    }
-                    target_path = path;
-                    r_HAND_start = links_fk[effector_idx];
-                    diff_target = KDL::diff(r_HAND_start, r_HAND_target, 1.0);
-
-                    // visualize the planned graph
-                    int m_id = 100;
-//                    m_id = rrt.addTreeMarker(markers_pub_, m_id);
-                    m_id = markers_pub_.addSinglePointMarker(m_id, KDL::Vector(xe(0), xe(1), 0), 0, 0, 1, 1, 0.05, "base");
-                    for (std::list<Eigen::VectorXd >::const_iterator it1 = path.begin(), it2=++path.begin(); it2 != path.end(); it1++, it2++) {
-                        KDL::Vector pos1((*it1)(0), (*it1)(1), 0), pos2((*it2)(0), (*it2)(1), 0);
-                        m_id = markers_pub_.addVectorMarker(m_id, pos1, pos2, 1, 1, 1, 1, 0.02, "base");
-                    }
-
-                    markers_pub_.addEraseMarkers(m_id, 2000);
-                    markers_pub_.publish();
-                    ros::spinOnce();
-                    ros::Duration(0.01).sleep();
-
-                    for (int q_idx = 0; q_idx < ndof; q_idx++) {
-                        saved_q[q_idx] = q[q_idx];
-                        saved_dq[q_idx] = dq[q_idx];
-                        saved_ddq[q_idx] = ddq[q_idx];
-                    }
-                    try_idx = 0;
-                    getchar();
+            Eigen::VectorXd xe(2);
+            bool pose_found = false;
+            // set new random target pose
+            for (int i = 0; i < 100; i++) {
+                r_HAND_target = KDL::Frame(KDL::Rotation::RotZ(randomUniform(-PI, PI)), KDL::Vector(randomUniform(0,1.8), randomUniform(-1,1), 0));
+                xe(0) = r_HAND_target.p.x();
+                xe(1) = r_HAND_target.p.y();
+                if (!checkCollision(xe, col_model)) {
+                    pose_found = true;
+                    break;
                 }
-                else {
-                    try_idx++;
+            }
+            if (!pose_found) {
+                std::cout << "ERROR: could not find valid pose" << std::endl;
+                return;
+            }
+            publishTransform(br, r_HAND_target, "effector_dest");
 
-                    realized_path.clear();
+            // get the current pose
+            sim.getState(saved_q, saved_dq, saved_ddq);
 
-                    if (try_idx % 3 == 1) {
+            KDL::Frame T_B_E;
+            kin_model->calculateFk(T_B_E, effector_name, saved_q);
+
+            Eigen::VectorXd xs(2);
+            xs(0) = T_B_E.p.x();
+            xs(1) = T_B_E.p.y();
+
+            pg.reset(xs, xe);
+            r_HAND_start = T_B_E;
+            diff_target = KDL::diff(r_HAND_start, r_HAND_target, 1.0);
+
+//            // calculate forward kinematics for all links
+//            for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
+//                kin_model->calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), q);
+//            }
+            bool pose_reached  = false;
+
+            for (int path_idx = 0; path_idx < 10; path_idx++) {
+
+                std::cout << "replanning the path..." << std::endl;
+                std::list<Eigen::VectorXd > path;
+                if (!pg.getPath(path)) {
+                    std::cout << "could not plan end effector path" << std::endl;
+                    getchar();
+                    continue;
+                }
+                target_path = path;
+
+                // visualize the planned graph
+                int m_id = 100;
+//                m_id = rrt.addTreeMarker(markers_pub_, m_id);
+                m_id = markers_pub_.addSinglePointMarker(m_id, KDL::Vector(xe(0), xe(1), 0), 0, 0, 1, 1, 0.05, "base");
+                for (std::list<Eigen::VectorXd >::const_iterator it1 = path.begin(), it2=++path.begin(); it2 != path.end(); it1++, it2++) {
+                    KDL::Vector pos1((*it1)(0), (*it1)(1), 0), pos2((*it2)(0), (*it2)(1), 0);
+                    m_id = markers_pub_.addVectorMarker(m_id, pos1, pos2, 1, 1, 1, 1, 0.02, "base");
+                }
+
+                markers_pub_.addEraseMarkers(m_id, 2000);
+                markers_pub_.publish();
+                ros::spinOnce();
+                ros::Duration(0.01).sleep();
+
+                for (int rot_idx = 0; rot_idx < 3; rot_idx++) {
+                    if (rot_idx == 1) {
                         double angle = diff_target.rot.Norm();
                         diff_target.rot = (angle - 360.0/180.0*PI) * diff_target.rot / angle;
                         std::cout << "trying other rotation..." << std::endl;
                     }
-                    else if (try_idx % 3 == 2) {
+                    else if (rot_idx == 2) {
                         double angle = diff_target.rot.Norm();
                         diff_target.rot = (angle - 2.0*360.0/180.0*PI) * diff_target.rot / angle;
                         std::cout << "trying other rotation..." << std::endl;
                     }
-                    else {
 
-                        Eigen::VectorXd xe(2);
-                        xe(0) = r_HAND_target.p.x();
-                        xe(1) = r_HAND_target.p.y();
+                    sim.setState(saved_q, saved_dq, saved_ddq);
 
-                        // get the current pose
-                        // calculate forward kinematics for all links
-                        for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
-                            kin_model->calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), saved_q);
+                    for (int loop_counter = 0; loop_counter < 3000; loop_counter++) {
+                        Eigen::VectorXd pt(2);
+                        double f_path = static_cast<double >(loop_counter)/2200.0;
+                        if (f_path > 1.0) {
+                            f_path = 1.0;
+                        }
+                        getPointOnPath(target_path, f_path, pt);
+                        markers_pub_.addSinglePointMarker(50, KDL::Vector(pt(0), pt(1), 0), 1, 0, 0, 1, 0.2, "base");
+
+                        Eigen::VectorXd q(ndof), dq(ndof), ddq(ndof);
+                        sim.getState(q, dq, ddq);
+                        KDL::Frame T_B_E;
+                        kin_model->calculateFk(T_B_E, effector_name, q);
+                        KDL::Frame r_HAND_current = T_B_E;
+
+                        KDL::Rotation target_rot = KDL::addDelta(r_HAND_start, diff_target, f_path).M;
+
+                        KDL::Frame target_pos(target_rot, KDL::Vector(pt(0), pt(1), 0));
+                        KDL::Twist diff = KDL::diff(r_HAND_current, target_pos, 1.0);
+                        sim.oneStep(diff);
+
+                        KDL::Twist diff_goal = KDL::diff(r_HAND_current, r_HAND_target, 1.0);
+
+                        if (diff_goal.vel.Norm() < 0.06 && diff.rot.Norm() < 5.0/180.0 * PI) {
+            //                std::cout << "Pose reached " << diff.vel.Norm() << " " << diff.rot.Norm() << std::endl;
+                            pose_reached  = true;
+                            break;
                         }
 
-                        std::cout << "replanning the path..." << std::endl;
-                        std::list<Eigen::VectorXd > path;
-                        if (!pg.getPath(path)) {
-                            std::cout << "could not plan end effector path" << std::endl;
-                            return;
+                        // publish markers and robot state with limited rate
+                        ros::Duration time_elapsed = ros::Time::now() - last_time;
+                        if (time_elapsed.toSec() > 0.05) {
+                            // calculate forward kinematics for all links
+                            for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
+                                kin_model->calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), q);
+                            }
+                            publishJointState(joint_state_pub_, q, joint_names);
+                            int m_id = 0;
+                            m_id = addRobotModelVis(markers_pub_, m_id, col_model, links_fk);
+                            markers_pub_.publish();
+                            ros::Time last_time = ros::Time::now();
                         }
-                        target_path = path;
-
-                        // visualize the planned graph
-                        int m_id = 100;
-//                        m_id = rrt.addTreeMarker(markers_pub_, m_id);
-                        m_id = markers_pub_.addSinglePointMarker(m_id, KDL::Vector(xe(0), xe(1), 0), 0, 0, 1, 1, 0.05, "base");
-                        for (std::list<Eigen::VectorXd >::const_iterator it1 = path.begin(), it2=++path.begin(); it2 != path.end(); it1++, it2++) {
-                            KDL::Vector pos1((*it1)(0), (*it1)(1), 0), pos2((*it2)(0), (*it2)(1), 0);
-                            m_id = markers_pub_.addVectorMarker(m_id, pos1, pos2, 1, 1, 1, 1, 0.02, "base");
-                        }
-
-                        markers_pub_.addEraseMarkers(m_id, 2000);
-                        markers_pub_.publish();
                         ros::spinOnce();
-                        ros::Duration(0.01).sleep();
+//                        loop_rate.sleep();
                     }
-
-                    // another try
-                    for (int q_idx = 0; q_idx < ndof; q_idx++) {
-                        q[q_idx] = saved_q[q_idx];
-                        dq[q_idx] = saved_dq[q_idx];
-                        ddq[q_idx] = saved_ddq[q_idx];
+                    if (pose_reached) {
+                        break;
                     }
                 }
-
-                pose_reached  = false;
-
-                loop_counter = 0;
+                if (pose_reached) {
+                    break;
+                }
             }
-            loop_counter += 1;
 
-            if (realized_path.size() == 0) {
-                if ((q-saved_q).norm() > 10.0/180.0*PI) {
-                    realized_path.push_back(q);
-                }
+
+            if (pose_reached) {
+                std::cout << "pose reached" << std::endl;
             }
             else {
-                if ((q-realized_path.back()).norm() > 10.0/180.0*PI) {
-                    realized_path.push_back(q);
-                }
+                std::cout << "could not reach the pose" << std::endl;
             }
-
-
-            //
-            // joint limit avoidance
-            //
-            Eigen::VectorXd torque_JLC(ndof);
-            Eigen::MatrixXd N_JLC(ndof, ndof);
-            task_JLC.compute(q, dq, dyn_model->getM(), torque_JLC, N_JLC);
-
-            //
-            // collision constraints
-            //
-            std::vector<self_collision::CollisionInfo> link_collisions;
-            self_collision::getCollisionPairs(col_model, links_fk, activation_dist, link_collisions);
-
-            Eigen::VectorXd torque_COL(ndof);
-            for (int q_idx = 0; q_idx < ndof; q_idx++) {
-                torque_COL[q_idx] = 0.0;
-            }
-            Eigen::MatrixXd N_COL(Eigen::MatrixXd::Identity(ndof, ndof));
-
-            task_COL.compute(q, dq, dyn_model->getInvM(), links_fk, link_collisions, torque_COL, N_COL);
-
-            //
-            // effector task
-            //
-            Eigen::VectorXd pt(2);
-            double f_path = static_cast<double >(loop_counter)/800.0;
-            if (f_path > 1.0) {
-                f_path = 1.0;
-            }
-            getPointOnPath(target_path, f_path, pt);
-            markers_pub_.addSinglePointMarker(50, KDL::Vector(pt(0), pt(1), 0), 1, 0, 0, 1, 0.2, "base");
-
-            Eigen::VectorXd torque_HAND(ndof);
-            Eigen::MatrixXd N_HAND(ndof, ndof);
-
-            KDL::Frame T_B_E = links_fk[effector_idx];
-            KDL::Frame r_HAND_current = T_B_E;
-
-            KDL::Rotation target_rot = KDL::addDelta(r_HAND_start, diff_target, f_path).M;
-
-            KDL::Frame target_pos(target_rot, KDL::Vector(pt(0), pt(1), 0));
-            KDL::Twist diff = KDL::diff(r_HAND_current, target_pos, 1.0);
-//            KDL::Twist diff = KDL::diff(r_HAND_current, r_HAND_target, 1.0);
-            Eigen::VectorXd r_HAND_diff(3);
-            r_HAND_diff[0] = diff[0];
-            r_HAND_diff[1] = diff[1];
-            r_HAND_diff[2] = diff[5];
-
-            KDL::Twist diff_goal = KDL::diff(r_HAND_current, r_HAND_target, 1.0);
-
-            if (diff_goal.vel.Norm() < 0.06 && diff.rot.Norm() < 5.0/180.0 * PI) {
-//                std::cout << "Pose reached " << diff.vel.Norm() << " " << diff.rot.Norm() << std::endl;
-                pose_reached  = true;
-                continue;
-            }
-
-            Eigen::VectorXd Kc(3);
-            Kc[0] = 10.0;
-            Kc[1] = 10.0;
-            Kc[2] = 0.2;
-            Eigen::VectorXd Dxi(3);
-            Dxi[0] = 0.7;
-            Dxi[1] = 0.7;
-            Dxi[2] = 0.7;
-
-            kin_model->getJacobian(J_r_HAND_6, effector_name, q);
-
-            for (int q_idx = 0; q_idx < ndof; q_idx++) {
-                J_r_HAND(0, q_idx) = J_r_HAND_6(0, q_idx);
-                J_r_HAND(1, q_idx) = J_r_HAND_6(1, q_idx);
-                J_r_HAND(2, q_idx) = J_r_HAND_6(5, q_idx);
-            }
-
-            task_HAND.compute(r_HAND_diff, Kc, Dxi, J_r_HAND, dq, dyn_model->getInvM(), torque_HAND, N_HAND);
-
-            torque = torque_JLC + N_JLC.transpose() * (torque_COL + (N_COL.transpose() * (torque_HAND)));
-
-            // simulate one step
-            Eigen::VectorXd prev_ddq(ddq), prev_dq(dq);
-            dyn_model->accel(ddq, q, dq, torque);
-            float time_d = 0.01;
-            for (int q_idx = 0; q_idx < ndof; q_idx++) {
-                dq[q_idx] += (prev_ddq[q_idx] + ddq[q_idx]) / 2.0 * time_d;
-                q[q_idx] += (prev_dq[q_idx] + dq[q_idx]) / 2.0 * time_d;
-            }
-
-            // publish markers and robot state with limited rate
-            ros::Duration time_elapsed = ros::Time::now() - last_time;
-            if (time_elapsed.toSec() > 0.05) {
-                publishJointState(joint_state_pub_, q, joint_names);
-                int m_id = 0;
-                m_id = addRobotModelVis(markers_pub_, m_id, col_model, links_fk);
-                markers_pub_.publish();
-                ros::Time last_time = ros::Time::now();
-            }
-            ros::spinOnce();
-            loop_rate.sleep();
+            getchar();
         }
 
     }
