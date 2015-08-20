@@ -46,66 +46,15 @@
 #include "planar5_dyn_model.h"
 #include <collision_convex_model/collision_convex_model.h>
 #include "kin_model/kin_model.h"
-#include "marker_publisher.h"
-#include "task_col.h"
-#include "task_hand.h"
-#include "task_jlc.h"
-#include "random_uniform.h"
-#include "reachability_map.h"
+#include "planer_utils/marker_publisher.h"
+#include "planer_utils/utilities.h"
+#include "planer_utils/task_col.h"
+#include "planer_utils/task_hand.h"
+#include "planer_utils/task_jlc.h"
+#include "planer_utils/random_uniform.h"
+#include "planer_utils/reachability_map.h"
 #include "rrt_star.h"
-/*
-class SphereQ {
-public:
-    SphereQ(const Eigen::VectorXd &center, double radius) :
-        center_(center),
-        radius_(radius)
-    {
-    }
 
-    SphereQ(const SphereQ &s) :
-        center_(s.center_),
-        radius_(s.radius_)
-    {
-    }
-
-    Eigen::VectorXd center_;
-    double radius_;
-};
-
-class Task_QA {
-public:
-    Task_QA(int ndof, const Eigen::VectorXd &lower_limit, const Eigen::VectorXd &upper_limit) :
-        ndof_(ndof),
-        lower_limit_(lower_limit),
-        upper_limit_(upper_limit)
-    {
-    }
-
-    ~Task_QA() {
-    }
-
-    void compute(const Eigen::VectorXd &q, const Eigen::VectorXd &dq, const Eigen::MatrixXd &I, const std::vector<SphereQ> &spheres, Eigen::VectorXd &torque, Eigen::MatrixXd &N) {
-
-            double activation = 0.0;
-            double max_force = 1.0;
-
-            for (int q_idx = 0; q_idx < ndof_; q_idx++) {
-//                torque(q_idx) = -0.1 * 2.0 * (1.0/(upper_limit_(q_idx) - lower_limit_(q_idx)) / (upper_limit_(q_idx) - lower_limit_(q_idx))) * (q(q_idx) - 1.0);
-                torque(q_idx) = -20.0 * (q(q_idx) - 1.0);
-            }
-            double norm = torque.norm();
-            if (norm > max_force) {
-                torque = torque / norm * max_force;
-            }
-
-    }
-
-protected:
-    int ndof_;
-    Eigen::VectorXd lower_limit_;
-    Eigen::VectorXd upper_limit_;
-};
-*/
 class TestDynamicModel {
     ros::NodeHandle nh_;
     ros::Publisher joint_state_pub_;
@@ -115,14 +64,12 @@ class TestDynamicModel {
     const double PI;
 
     std::list<Eigen::VectorXd > penalty_points_;
-    ReachabilityMap r_map_;
 
 public:
     TestDynamicModel() :
         nh_(),
         PI(3.141592653589793),
-        markers_pub_(nh_),
-        r_map_(0.1, 2)
+        markers_pub_(nh_)
     {
         joint_state_pub_ = nh_.advertise<sensor_msgs::JointState>("/joint_states", 10);
     }
@@ -130,50 +77,8 @@ public:
     ~TestDynamicModel() {
     }
 
-    void publishJointState(const Eigen::VectorXd &q, const std::vector<std::string > &joint_names) {
-        sensor_msgs::JointState js;
-        js.header.stamp = ros::Time::now();
-        int q_idx = 0;
-        for (std::vector<std::string >::const_iterator it = joint_names.begin(); it != joint_names.end(); it++, q_idx++) {
-            js.name.push_back(*it);
-            js.position.push_back(q[q_idx]);
-        }
-        joint_state_pub_.publish(js);
-    }
-
-    void publishTransform(const KDL::Frame &T_B_F, const std::string &frame_id) {
-        tf::Transform transform;
-        transform.setOrigin( tf::Vector3(T_B_F.p.x(), T_B_F.p.y(), T_B_F.p.z()) );
-        tf::Quaternion q;
-        double qx, qy, qz, qw;
-        T_B_F.M.GetQuaternion(q[0], q[1], q[2], q[3]);
-        transform.setRotation(q);
-        br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "base", frame_id));
-    }
-
-    int publishRobotModelVis(int m_id, const boost::shared_ptr<self_collision::CollisionModel> &col_model, const std::vector<KDL::Frame > &T) {
-        for (self_collision::CollisionModel::VecPtrLink::const_iterator l_it = col_model->getLinks().begin(); l_it != col_model->getLinks().end(); l_it++) {
-            KDL::Frame T_B_L = T[(*l_it)->index_];
-            for (self_collision::Link::VecPtrCollision::const_iterator it = (*l_it)->collision_array.begin(); it != (*l_it)->collision_array.end(); it++) {
-                KDL::Frame T_B_O = T_B_L * (*it)->origin;
-                if ((*it)->geometry->getType() == self_collision::Geometry::CONVEX) {
-                    // TODO
-                }
-                else if ((*it)->geometry->getType() == self_collision::Geometry::SPHERE) {
-                    self_collision::Sphere *sphere = static_cast<self_collision::Sphere* >((*it)->geometry.get());
-                    m_id = markers_pub_.addSinglePointMarker(m_id, T_B_O.p, 0, 1, 0, 1, sphere->radius*2, "base");
-                }
-                else if ((*it)->geometry->getType() == self_collision::Geometry::CAPSULE) {
-                    self_collision::Capsule *capsule = static_cast<self_collision::Capsule* >((*it)->geometry.get());
-                    m_id = markers_pub_.addCapsule(m_id, T_B_O, capsule->length, capsule->radius, "base");
-                }
-            }
-        }
-        return m_id;
-    }
-
-    double costLine(const Eigen::VectorXd &x1, const Eigen::VectorXd &x2) const {
-        return (x1-x2).norm() * (2.0 - r_map_.getValue(x1) - r_map_.getValue(x2));
+    double costLine(const Eigen::VectorXd &x1, const Eigen::VectorXd &x2, const boost::shared_ptr<ReachabilityMap > &r_map) const {
+        return (x1-x2).norm() * (2.0 - r_map->getValue(x1) - r_map->getValue(x2));
     }
 
     void sampleSpace(Eigen::VectorXd &sample) const {
@@ -181,85 +86,15 @@ public:
         sample(1) = randomUniform(-1,1);
     }
 
-    bool checkCollisionQ5(const Eigen::VectorXd &x, const boost::shared_ptr<self_collision::CollisionModel> &col_model, const boost::shared_ptr<KinematicModel> &kin_model) {
-        std::vector<self_collision::CollisionInfo> link_collisions;
-        std::vector<KDL::Frame > links_fk(col_model->getLinksCount());
-        // calculate forward kinematics for all links
-        for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
-            kin_model->calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), x);
-        }
-        self_collision::getCollisionPairs(col_model, links_fk, 0.05, link_collisions);
-        if (link_collisions.size() > 0) {
-            return true;
-        }
-
-        return false;
-    }
-
-    double costLineQ5(const Eigen::VectorXd &x1, const Eigen::VectorXd &x2) const {
-        return (x1-x2).norm();
-    }
-
-    void sampleSpaceQ5(Eigen::VectorXd &sample, const Eigen::VectorXd &lower_limit, const Eigen::VectorXd &upper_limit) const {
-        for (int q_idx = 0; q_idx < 5; q_idx++) {
-            sample(q_idx) = randomUniform(lower_limit(q_idx), upper_limit(q_idx));
-        }
-    }
-
-    void getPointOnPath(const std::list<Eigen::VectorXd > &path, double f, Eigen::VectorXd &x) const {
-
-        if (path.size() == 0) {
-            std::cout << "ERROR: getPointOnPath: path size is 0" << std::endl;
-            return;
-        }
-        else if (path.size() == 1 || f < 0.0) {
-            x = (*path.begin());
-            return;
-        }
-
-        if (f > 1.0) {
-            x = (*(--path.end()));
-            return;
-        }
-
-        double length = 0.0;
-        for (std::list<Eigen::VectorXd >::const_iterator it1 = path.begin(), it2=++path.begin(); it2 != path.end(); it1++, it2++) {
-            double dist = ((*it1) - (*it2)).norm();
-            length += dist;
-        }
-
-        double pos = length * f;
-
-        for (std::list<Eigen::VectorXd >::const_iterator it1 = path.begin(), it2=++path.begin(); it2 != path.end(); it1++, it2++) {
-            Eigen::VectorXd v = ((*it2) - (*it1));
-            double dist = v.norm();
-            if (pos - dist > 0) {
-                pos -= dist;
-            }
-            else {
-                x = (*it1) + pos * v / dist;
-                return;
-            }
-        }
-        x = (*(--path.end()));
-    }
-
-    bool checkCollision(const Eigen::VectorXd &x, const std::vector<KDL::Frame > &links_fk, const boost::shared_ptr<self_collision::CollisionModel> &col_model) {
-        // check collision with base and environment only
-        std::set<int> excluded_link_idx;
-        for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
-            const std::string &link_name = col_model->getLinkName(l_idx);
-            if (link_name != "base" && link_name != "env_link") {
-                excluded_link_idx.insert(col_model->getLinkIndex(link_name));
-            }
-        }
-
+    bool checkCollision(const Eigen::VectorXd &x, const boost::shared_ptr<self_collision::CollisionModel> &col_model) {
         // create dummy object
         boost::shared_ptr< self_collision::Collision > pcol = self_collision::createCollisionSphere(0.1, KDL::Frame(KDL::Vector(x[0], x[1], 0)));
-        int base_link_idx = col_model->getLinkIndex("base");
-        const KDL::Frame &T_B_L1 = links_fk[base_link_idx];
+        KDL::Frame T_B_L1;
+        KDL::Frame T_B_L2;
+        self_collision::checkCollision(pcol, T_B_L1, col_model->getLink(col_model->getLinkIndex("base")), T_B_L2);
+        self_collision::checkCollision(pcol, T_B_L1, col_model->getLink(col_model->getLinkIndex("env_link")), T_B_L2);
 
-        return self_collision::checkCollision(pcol, T_B_L1, links_fk, col_model, excluded_link_idx);
+        return self_collision::checkCollision(pcol, T_B_L1, col_model->getLink(col_model->getLinkIndex("base")), T_B_L2) || self_collision::checkCollision(pcol, T_B_L1, col_model->getLink(col_model->getLinkIndex("env_link")), T_B_L2);
     }
 
     void spin() {
@@ -354,30 +189,36 @@ public:
             max_trq[q_idx] = 10.0;
         }
 
-//        ros::Duration(1.0).sleep();
+        ros::Duration(1.0).sleep();
 
         //
         // reachability map for end-effector
         //
 
+        boost::shared_ptr<ReachabilityMap > r_map( new ReachabilityMap(0.1, 2) );
         
-        r_map_.generate(kin_model, col_model, effector_name, ndof, lower_limit, upper_limit);
+        r_map->generate(kin_model, col_model, effector_name, ndof, lower_limit, upper_limit);
 
 /*
-        // TEST: reachability map
-        int m_id = 3000;
-        for (double x = -1.8; x < 1.8; x += 0.1) {
-            for (double y = -1.8; y < 1.8; y += 0.1) {
-                Eigen::VectorXd xs(2);
-                xs(0) = x;
-                xs(1) = y;
-                double val = r_map_.getValue(xs);
-                m_id = markers_pub_.addSinglePointMarker(m_id, KDL::Vector(xs(0), xs(1), 0), 0, 0, 1, 1, 0.1*val, "base");
+        for (int i = 0; i < 10; i++) {
+            // TEST: reachability map
+            int m_id = 3000;
+            for (double x = -1.8; x < 1.8; x += 0.1) {
+                for (double y = -1.8; y < 1.8; y += 0.1) {
+                    Eigen::VectorXd xs(2);
+                    xs(0) = x;
+                    xs(1) = y;
+                    double val = r_map.getValue(xs);
+                    m_id = markers_pub_.addSinglePointMarker(m_id, KDL::Vector(xs(0), xs(1), 0), 0, 0, 1, 1, 0.1*val, "base");
+                }
             }
+            markers_pub_.publish();
+            ros::spinOnce();
+            ros::Duration(0.01).sleep();
+            getchar();
+            r_map.grow();
         }
-        markers_pub_.publish();
-        ros::spinOnce();
-        ros::Duration(0.01).sleep();
+        return;
 //        ros::Duration(1).sleep();
 //        return;
 //*/
@@ -393,99 +234,80 @@ public:
         Task_HAND task_HAND(ndof, 3);
 //        Task_QA task_QA(ndof, lower_limit, upper_limit);
 
-        RRTStar rrt(2, boost::bind(&TestDynamicModel::checkCollision, this, _1, links_fk, col_model),
-                    boost::bind(&TestDynamicModel::costLine, this, _1, _2), boost::bind(&TestDynamicModel::sampleSpace, this, _1), 0.05, 0.2, 0.4 );
-
-        RRTStar rrtQ5(5, boost::bind(&TestDynamicModel::checkCollisionQ5, this, _1, col_model, kin_model),
-                        boost::bind(&TestDynamicModel::costLineQ5, this, _1, _2), boost::bind(&TestDynamicModel::sampleSpaceQ5, this, _1, lower_limit, upper_limit),
-                        3.0/180.0*PI, 60.0/180.0*PI, 80.0/180.0*PI );
-/*
-        // TEST: RRT (Q5)
-        while (ros::ok()) {
-
-            Eigen::VectorXd xs(ndof), xe(ndof);
-            xs = q;
-            for (int q_idx = 0; q_idx < ndof; q_idx++) {
-                xe(q_idx) = randomUniform(lower_limit(q_idx), upper_limit(q_idx));
-            }
-
-            if (!rrt.isStateValid(xe)) {
-                continue;
-            }
-
-            KDL::Frame T_B_E;
-            kin_model->calculateFk(T_B_E, col_model->getLinkName(effector_idx), xe);
-            publishTransform(T_B_E, "effector_dest");
-
-            std::list<Eigen::VectorXd > path;
-            rrtQ5.plan(xs, xe, 0.05, path);
-
-            std::cout << "path.size(): " << path.size() << std::endl;
-            if (path.size() == 0) {
-                continue;
-            }
-
-            for (double f = 0.0; f < 1.0; f += 0.001) {
-                Eigen::VectorXd x(ndof);
-                getPointOnPath(path, f, x);
-
-                std::vector<KDL::Frame > links_fk(col_model->getLinksCount());
-                // calculate forward kinematics for all links
-                for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
-                    kin_model->calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), x);
-                }
-
-                publishJointState(x, joint_names);
-                int m_id = 0;
-                m_id = publishRobotModelVis(m_id, col_model, links_fk);
-                markers_pub_.publish();
-
-                ros::spinOnce();
-                ros::Duration(0.01).sleep();
-            }
-
-            getchar();
-
-            q = xe;
-        }
-
-        return;
-*/
+        RRTStar rrt(2, boost::bind(&TestDynamicModel::checkCollision, this, _1, col_model),
+                    boost::bind(&TestDynamicModel::costLine, this, _1, _2, r_map), boost::bind(&TestDynamicModel::sampleSpace, this, _1), 0.05, 0.2, 0.4 );
 
 /*
-        // TEST: RRT
+        // TEST: RRT paths generation
+        Eigen::VectorXd lower_bound(2);
+        Eigen::VectorXd upper_bound(2);
+        lower_bound(0) = -0.5;
+        upper_bound(0) = 2.0;
+        lower_bound(1) = -1.0;
+        upper_bound(1) = 1.0;
+        r_map.generate(lower_bound, upper_bound);
+
+        ReachabilityMap r_map_tmp(0.1, 2);
+        r_map_tmp.generate(lower_bound, upper_bound);
         while (ros::ok()) {
 
             Eigen::VectorXd xs(2), xe(2);
-            xs(0) = randomUniform(0,2);
-            xs(1) = randomUniform(-1,1);
-            xe(0) = randomUniform(0,2);
-            xe(1) = randomUniform(-1,1);
+            sampleSpace(xs);
+            sampleSpace(xe);
 
             if (!rrt.isStateValid(xs) || !rrt.isStateValid(xe)) {
                 continue;
             }
 
-            std::list<Eigen::VectorXd > path;
-            rrt.plan(xs, xe, 0.05, path);
+            r_map.clear();
+            int m_id_path = 3000;
+            for (int try_idx = 0; try_idx < 10; try_idx++) {
+                std::cout << "try_idx: " << try_idx << std::endl;
+                std::list<Eigen::VectorXd > path;
+                rrt.plan(xs, xe, 0.05, path);
 
-            int m_id = 100;
-            m_id = rrt.addTreeMarker(markers_pub_, m_id);
-            m_id = markers_pub_.addSinglePointMarker(m_id, KDL::Vector(xe(0), xe(1), 0), 0, 0, 1, 1, 0.05, "base");
-            for (std::list<Eigen::VectorXd >::const_iterator it1 = path.begin(), it2=++path.begin(); it2 != path.end(); it1++, it2++) {
-                KDL::Vector pos1((*it1)(0), (*it1)(1), 0), pos2((*it2)(0), (*it2)(1), 0);
-                m_id = markers_pub_.addVectorMarker(m_id, pos1, pos2, 1, 1, 1, 1, 0.01, "base");
+                r_map_tmp.clear();
+                for (double f = 0.0; f < 1.0; f += 0.001) {
+                    Eigen::VectorXd pt(2);
+                    getPointOnPath(path, f, pt);
+                    r_map_tmp.setValue(pt, 1);
+                }
+
+                r_map_tmp.grow();
+                r_map_tmp.grow();
+                r_map_.addMap(r_map_tmp);
+                int m_id_map = 5000;
+                for (double x = -1.8; x < 1.8; x += 0.1) {
+                    for (double y = -1.8; y < 1.8; y += 0.1) {
+                        Eigen::VectorXd xs(2);
+                        xs(0) = x;
+                        xs(1) = y;
+                        double val = r_map.getValue(xs);
+                        m_id_map = markers_pub_.addSinglePointMarker(m_id_map, KDL::Vector(xs(0), xs(1), 0), 0, 0, 1, 1, 0.1*val, "base");
+                    }
+                }
+
+                int m_id = 100;
+                m_id = rrt.addTreeMarker(markers_pub_, m_id);
+                m_id = markers_pub_.addSinglePointMarker(m_id, KDL::Vector(xe(0), xe(1), 0), 0, 0, 1, 1, 0.05, "base");
+                // draw path
+                for (std::list<Eigen::VectorXd >::const_iterator it1 = path.begin(), it2=++path.begin(); it2 != path.end(); it1++, it2++) {
+                    KDL::Vector pos1((*it1)(0), (*it1)(1), 0), pos2((*it2)(0), (*it2)(1), 0);
+                    m_id_path = markers_pub_.addVectorMarker(m_id_path, pos1, pos2, 1, 1, 1, 1, 0.01, "base");
+                }
+                markers_pub_.addEraseMarkers(m_id, 2000);
+                markers_pub_.addEraseMarkers(m_id_path, m_id_path+1000);
+                markers_pub_.addEraseMarkers(m_id_map, m_id_map+1000);
+                markers_pub_.publish();
+                ros::spinOnce();
+                ros::Duration(0.001).sleep();
+
+                getchar();
             }
-            markers_pub_.addEraseMarkers(m_id, 2000);
-            markers_pub_.publish();
-            ros::spinOnce();
-            ros::Duration(0.001).sleep();
-
-            getchar();
         }
 
         return;
-*/
+//*/
 
         // loop variables
         ros::Time last_time = ros::Time::now();
@@ -514,16 +336,16 @@ public:
                 if (pose_reached || try_idx > 15) {
                     if (try_idx > 15) {
                         std::cout << "Could not reach the pose" << std::endl;
-                        publishJointState(q, joint_names);
+                        publishJointState(joint_state_pub_, q, joint_names);
                         int m_id = 0;
-                        m_id = publishRobotModelVis(m_id, col_model, links_fk);
+                        m_id = addRobotModelVis(markers_pub_, m_id, col_model, links_fk);
                         ros::Time last_time = ros::Time::now();
                     }
                     else {
                         std::cout << "Pose reached" << std::endl;
-                        publishJointState(q, joint_names);
+                        publishJointState(joint_state_pub_, q, joint_names);
                         int m_id = 0;
-                        m_id = publishRobotModelVis(m_id, col_model, links_fk);
+                        m_id = addRobotModelVis(markers_pub_, m_id, col_model, links_fk);
                         ros::Time last_time = ros::Time::now();
                     }
                     bool pose_found = false;
@@ -542,9 +364,9 @@ public:
                         std::cout << "ERROR: could not find valid pose" << std::endl;
                         return;
                     }
-                    publishTransform(r_HAND_target, "effector_dest");
+                    publishTransform(br, r_HAND_target, "effector_dest");
 
-                    r_map_.resetPenalty();
+                    r_map->resetPenalty();
                     realized_path.clear();
 //                    spheres.clear();
                     penalty_points_.clear();
@@ -600,7 +422,7 @@ public:
                         for (double f = 0.1; f <= 0.9; f += 0.01) {
                             Eigen::VectorXd pt(2);
                             getPointOnPath(target_path, f, pt);
-                            r_map_.addPenalty( pt );
+                            r_map->addPenalty( pt );
                         }
                             std::cout << "added penalty " << std::endl;
 //                        }
@@ -819,9 +641,9 @@ public:
             // publish markers and robot state with limited rate
             ros::Duration time_elapsed = ros::Time::now() - last_time;
             if (time_elapsed.toSec() > 0.05) {
-                publishJointState(q, joint_names);
+                publishJointState(joint_state_pub_, q, joint_names);
                 int m_id = 0;
-                m_id = publishRobotModelVis(m_id, col_model, links_fk);
+                m_id = addRobotModelVis(markers_pub_, m_id, col_model, links_fk);
                 markers_pub_.publish();
                 ros::Time last_time = ros::Time::now();
             }

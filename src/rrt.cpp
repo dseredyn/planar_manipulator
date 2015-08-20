@@ -31,7 +31,7 @@
 
 #include "rrt.h"
 
-#include "random_uniform.h"
+#include "planer_utils/random_uniform.h"
 
     RRT::RRT(int ndof,
             boost::function<bool(const KDL::Frame &x)> collision_func,
@@ -186,22 +186,23 @@
         }
     }
 
-    void RRT::plan(const Eigen::VectorXd &start, const KDL::Frame &x_goal, double goal_tolerance, std::list<KDL::Frame > &path, MarkerPublisher &markers_pub) {
+    void RRT::plan(const Eigen::VectorXd &start, const KDL::Frame &x_goal, double goal_tolerance, std::list<KDL::Frame > &path_x, std::list<Eigen::VectorXd > &path_q, MarkerPublisher &markers_pub) {
         V_.clear();
         E_.clear();
-        path.clear();
+        path_x.clear();
+        path_q.clear();
 
         int q_new_idx = 0;
 
         RRTState state_start;
         kin_model_->calculateFk(state_start.T_B_E_, effector_name_, start);
-        state_start.q_vec_.push_back(start);        
+        state_start.q_vec_.push_back(std::make_pair(0, start));        
         V_[0] = state_start;
 
         bool goal_found = false;
 
         int m_id = 0;
-        for (int step = 0; step < 100; step++) {
+        for (int step = 0; step < 300; step++) {
             bool sample_goal = randomUniform(0,1) < 0.05;
             KDL::Frame x_rand;
 
@@ -224,22 +225,29 @@
             steer(x_nearest, x_rand, 0.2, 60.0/180.0*3.1415, x_new);
 
 //            std::cout << x_nearest.p[0] << " " << x_nearest.p[1] << " " << x_nearest.p[2] << std::endl;
-            std::cout << x_new.p[0] << " " << x_new.p[1] << " " << x_new.p[2] << std::endl;
-            std::cout << "step " << step << "  nearest_idx " << x_nearest_idx << std::endl;
+//            std::cout << x_new.p[0] << " " << x_new.p[1] << " " << x_new.p[2] << std::endl;
 
-
+            int nearest_q_vec_idx = 0;
+            bool added_new = false;
             // for each configuration from the closest pose try to move to the new pose
-            for (std::vector<Eigen::VectorXd >::const_iterator q_vec_it = state_nearest.q_vec_.begin(); q_vec_it != state_nearest.q_vec_.end(); q_vec_it++) {
+            for (std::vector<std::pair<int, Eigen::VectorXd > >::const_iterator q_vec_it = state_nearest.q_vec_.begin(); q_vec_it != state_nearest.q_vec_.end(); q_vec_it++, nearest_q_vec_idx++) {
                 for (int try_idx = 0; try_idx < 3; try_idx++) {
                     Eigen::VectorXd q_new(ndof_);
-                    if (collisionFree(*q_vec_it, x_nearest, x_new, try_idx, q_new)) {
-                        RRTState state_new;
-                        state_new.T_B_E_ = x_new;
-                        state_new.q_vec_.push_back(q_new);
-                        q_new_idx++;
-                        V_[q_new_idx] = state_new;
-                        E_[q_new_idx] = x_nearest_idx;
-                        m_id = markers_pub.addVectorMarker(m_id, x_nearest.p, x_new.p, 0, 0.7, 0, 0.5, 0.01, "base");
+                    if (collisionFree(q_vec_it->second, x_nearest, x_new, try_idx, q_new)) {
+
+                        if (!added_new) {
+                            added_new = true;
+                            RRTState state_new;
+                            state_new.T_B_E_ = x_new;
+                            state_new.q_vec_.push_back( std::make_pair(nearest_q_vec_idx, q_new) );
+                            q_new_idx++;
+                            V_[q_new_idx] = state_new;
+                            E_[q_new_idx] = x_nearest_idx;
+                            m_id = markers_pub.addVectorMarker(m_id, x_nearest.p, x_new.p, 0, 0.7, 0, 0.5, 0.01, "base");
+                        }
+                        else {
+                            V_[q_new_idx].q_vec_.push_back( std::make_pair(nearest_q_vec_idx, q_new) );
+                        }
 
                         KDL::Twist goal_diff( KDL::diff(x_new, x_goal, 1.0) );
                         if (goal_diff.vel.Norm() < 0.03 && goal_diff.rot.Norm() < 10.0/180.0*3.1415) {
@@ -252,10 +260,15 @@
                 if (goal_found) {
                     break;
                 }
+
             }
+            if (added_new) {
+                std::cout << "step " << step << "  nearest_idx " << x_nearest_idx << "  edges " << V_[q_new_idx].q_vec_.size() << std::endl;
+            }
+
             markers_pub.publish();
             ros::spinOnce();
-            getchar();
+//            getchar();
             if (goal_found) {
                 break;
             }
@@ -277,12 +290,40 @@
             return;
         }
 */
+
+        int q_vec_idx = V_[q_new_idx].q_vec_.size()-1;
         std::list<int > idx_path;
         getPath(q_new_idx, idx_path);
-        for (std::list<int >::const_iterator p_it = idx_path.begin(); p_it != idx_path.end(); p_it++) {
-            path.push_back(V_.find(*p_it)->second.T_B_E_);
+        for (std::list<int >::const_reverse_iterator p_it = idx_path.rbegin(); p_it != idx_path.rend(); p_it++) {
+//            std::list<int >::const_reverse_iterator p_it2 = p_it;
+//            p_it2++;
+            const RRTState &current = V_.find(*p_it)->second;
+
+//            if (p_it2 == idx_path.rend()) {
+//                path_q.push_back(current.q_vec_[q_vec_idx]->second);
+//            }
+//            else {
+            path_q.push_back(current.q_vec_[q_vec_idx].second);
+            q_vec_idx = current.q_vec_[q_vec_idx].first;
+//            }
         }
 
+        std::reverse(path_q.begin(), path_q.end());
+
+/*
+        for (std::list<int >::const_iterator p_it = idx_path.begin(); p_it != idx_path.end(); p_it++) {
+            const RRTState &current = V_.find(*p_it)->second;
+            if (p_it == idx_path.begin()) {
+                path_q.push_back(current.q_vec_[0]);
+            }
+            else {
+                std::list<int >::const_iterator p_it_prev = p_it;
+                p_it_prev--;
+                const RRTState &prev = V_.find(*p_it_prev)->second;
+                path_q.push_back(current.q_vec_[0]);
+            }
+        }
+*/
     }
 
     int RRT::addTreeMarker(MarkerPublisher &markers_pub, int m_id) const {

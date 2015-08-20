@@ -34,15 +34,14 @@
 
 #include "Eigen/Dense"
 
-#include "marker_publisher.h"
+#include "planer_utils/marker_publisher.h"
 #include "kin_model/kin_model.h"
 #include "simulator.h"
 
 class RRTState {
 public:
     KDL::Frame T_B_E_;
-
-    std::vector<Eigen::VectorXd > q_vec_;
+    std::vector<std::pair<int, Eigen::VectorXd > > q_vec_;
 };
 
 class RRT {
@@ -76,7 +75,7 @@ public:
 
     void getPath(int q_idx, std::list<int > &path) const;
 
-    void plan(const Eigen::VectorXd &start, const KDL::Frame &x_goal, double goal_tolerance, std::list<KDL::Frame > &path, MarkerPublisher &markers_pub);
+    void plan(const Eigen::VectorXd &start, const KDL::Frame &x_goal, double goal_tolerance, std::list<KDL::Frame > &path_x, std::list<Eigen::VectorXd > &path_q, MarkerPublisher &markers_pub);
 
     int addTreeMarker(MarkerPublisher &markers_pub, int m_id) const;
 

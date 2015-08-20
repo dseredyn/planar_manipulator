@@ -32,11 +32,6 @@
 #ifndef SIMULATOR_H__
 #define SIMULATOR_H__
 
-//#include <ros/ros.h>
-//#include "ros/package.h"
-//#include <sensor_msgs/JointState.h>
-//#include <visualization_msgs/MarkerArray.h>
-//#include <tf/transform_broadcaster.h>
 #include <boost/bind.hpp>
 
 #include <string>
@@ -44,16 +39,14 @@
 #include <stdio.h>
 
 #include "Eigen/Dense"
-//#include "Eigen/LU"
+
 
 #include "planar5_dyn_model.h"
 #include <collision_convex_model/collision_convex_model.h>
 #include "kin_model/kin_model.h"
-//#include "marker_publisher.h"
-#include "task_col.h"
-#include "task_hand.h"
-#include "task_jlc.h"
-//#include "random_uniform.h"
+#include "planer_utils/task_col.h"
+#include "planer_utils/task_hand.h"
+#include "planer_utils/task_jlc.h"
 
 class DynamicsSimulatorHandPose {
 private:

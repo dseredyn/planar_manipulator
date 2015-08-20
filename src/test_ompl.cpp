@@ -52,8 +52,9 @@
 
 #include <collision_convex_model/collision_convex_model.h>
 #include "kin_model/kin_model.h"
-#include "marker_publisher.h"
-#include "random_uniform.h"
+#include "planer_utils/marker_publisher.h"
+#include "planer_utils/utilities.h"
+#include "planer_utils/random_uniform.h"
 
 class TestOmpl {
     ros::NodeHandle nh_;
@@ -73,87 +74,6 @@ public:
     }
 
     ~TestOmpl() {
-    }
-
-    void publishJointState(const Eigen::VectorXd &q, const std::vector<std::string > &joint_names) {
-        sensor_msgs::JointState js;
-        js.header.stamp = ros::Time::now();
-        int q_idx = 0;
-        for (std::vector<std::string >::const_iterator it = joint_names.begin(); it != joint_names.end(); it++, q_idx++) {
-            js.name.push_back(*it);
-            js.position.push_back(q[q_idx]);
-        }
-        joint_state_pub_.publish(js);
-    }
-
-    void publishTransform(const KDL::Frame &T_B_F, const std::string &frame_id) {
-        tf::Transform transform;
-        transform.setOrigin( tf::Vector3(T_B_F.p.x(), T_B_F.p.y(), T_B_F.p.z()) );
-        tf::Quaternion q;
-        double qx, qy, qz, qw;
-        T_B_F.M.GetQuaternion(q[0], q[1], q[2], q[3]);
-        transform.setRotation(q);
-        br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "base", frame_id));
-    }
-
-    int publishRobotModelVis(int m_id, const boost::shared_ptr<self_collision::CollisionModel> &col_model, const std::vector<KDL::Frame > &T) {
-        for (self_collision::CollisionModel::VecPtrLink::const_iterator l_it = col_model->getLinks().begin(); l_it != col_model->getLinks().end(); l_it++) {
-            KDL::Frame T_B_L = T[(*l_it)->index_];
-            for (self_collision::Link::VecPtrCollision::const_iterator it = (*l_it)->collision_array.begin(); it != (*l_it)->collision_array.end(); it++) {
-                KDL::Frame T_B_O = T_B_L * (*it)->origin;
-                if ((*it)->geometry->getType() == self_collision::Geometry::CONVEX) {
-                    // TODO
-                }
-                else if ((*it)->geometry->getType() == self_collision::Geometry::SPHERE) {
-                    self_collision::Sphere *sphere = static_cast<self_collision::Sphere* >((*it)->geometry.get());
-                    m_id = markers_pub_.addSinglePointMarker(m_id, T_B_O.p, 0, 1, 0, 1, sphere->radius*2, "base");
-                }
-                else if ((*it)->geometry->getType() == self_collision::Geometry::CAPSULE) {
-                    self_collision::Capsule *capsule = static_cast<self_collision::Capsule* >((*it)->geometry.get());
-                    m_id = markers_pub_.addCapsule(m_id, T_B_O, capsule->length, capsule->radius, "base");
-                }
-            }
-        }
-        return m_id;
-    }
-
-    void getPointOnPath(const std::list<Eigen::VectorXd > &path, double f, Eigen::VectorXd &x) const {
-
-        if (path.size() == 0) {
-            std::cout << "ERROR: getPointOnPath: path size is 0" << std::endl;
-            return;
-        }
-        else if (path.size() == 1 || f < 0.0) {
-            x = (*path.begin());
-            return;
-        }
-
-        if (f > 1.0) {
-            x = (*(--path.end()));
-            return;
-        }
-
-
-        double length = 0.0;
-        for (std::list<Eigen::VectorXd >::const_iterator it1 = path.begin(), it2=++path.begin(); it2 != path.end(); it1++, it2++) {
-            double dist = ((*it1) - (*it2)).norm();
-            length += dist;
-        }
-
-        double pos = length * f;
-
-        for (std::list<Eigen::VectorXd >::const_iterator it1 = path.begin(), it2=++path.begin(); it2 != path.end(); it1++, it2++) {
-            Eigen::VectorXd v = ((*it2) - (*it1));
-            double dist = v.norm();
-            if (pos - dist > 0) {
-                pos -= dist;
-            }
-            else {
-                x = (*it1) + pos * v / dist;
-                return;
-            }
-        }
-        std::cout << "ERROR: getPointOnPath: ??" << std::endl;
     }
 
     void stateOmplToEigen(const ompl::base::State *s, Eigen::VectorXd &x, int ndof) {
@@ -299,7 +219,7 @@ public:
             stateOmplToEigen(goal.get(), xe, ndof);
             KDL::Frame T_B_E;
             kin_model->calculateFk(T_B_E, col_model->getLinkName(effector_idx), xe);
-            publishTransform(T_B_E, "effector_dest");
+            publishTransform(br, T_B_E, "effector_dest");
 
             ompl::base::ProblemDefinitionPtr pdef(new ompl::base::ProblemDefinition(si));
             pdef->clearStartStates();
@@ -338,9 +258,9 @@ public:
                         kin_model->calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), x);
                     }
 
-                    publishJointState(x, joint_names);
+                    publishJointState(joint_state_pub_, x, joint_names);
                     int m_id = 0;
-                    m_id = publishRobotModelVis(m_id, col_model, links_fk);
+                    m_id = addRobotModelVis(markers_pub_, m_id, col_model, links_fk);
                     markers_pub_.publish();
 
                     ros::spinOnce();

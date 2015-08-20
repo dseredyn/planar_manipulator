@@ -31,7 +31,7 @@
 
 #include "rrt_star.h"
 
-#include "random_uniform.h"
+#include "planer_utils/random_uniform.h"
 
     RRTStar::RRTStar(int ndof,
             boost::function<bool(const Eigen::VectorXd &x)> collision_func,
@@ -72,7 +72,8 @@
         double min_dist = -1.0;
         int min_idx = -1;
         for (std::map<int, Eigen::VectorXd >::const_iterator v_it = V_.begin(); v_it != V_.end(); v_it++) {
-            double dist = (v_it->second - x).norm();
+//            double dist = (v_it->second - x).norm();
+            double dist = costLine(v_it->second, x);
             if (min_idx < 0 || dist < min_dist) {
                 min_dist = dist;
                 min_idx = v_it->first;

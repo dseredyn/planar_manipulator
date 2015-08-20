@@ -45,11 +45,12 @@
 #include "planar5_dyn_model.h"
 #include <collision_convex_model/collision_convex_model.h>
 #include "kin_model/kin_model.h"
-#include "marker_publisher.h"
-#include "task_col.h"
-#include "task_hand.h"
-#include "task_jlc.h"
-#include "random_uniform.h"
+#include "planer_utils/marker_publisher.h"
+#include "planer_utils/utilities.h"
+#include "planer_utils/task_col.h"
+#include "planer_utils/task_hand.h"
+#include "planer_utils/task_jlc.h"
+#include "planer_utils/random_uniform.h"
 
 class TestDynamicModel {
     ros::NodeHandle nh_;
@@ -69,48 +70,6 @@ public:
     }
 
     ~TestDynamicModel() {
-    }
-
-    void publishJointState(const Eigen::VectorXd &q, const std::vector<std::string > &joint_names) {
-        sensor_msgs::JointState js;
-        js.header.stamp = ros::Time::now();
-        int q_idx = 0;
-        for (std::vector<std::string >::const_iterator it = joint_names.begin(); it != joint_names.end(); it++, q_idx++) {
-            js.name.push_back(*it);
-            js.position.push_back(q[q_idx]);
-        }
-        joint_state_pub_.publish(js);
-    }
-
-    void publishTransform(const KDL::Frame &T_B_F, const std::string &frame_id) {
-        tf::Transform transform;
-        transform.setOrigin( tf::Vector3(T_B_F.p.x(), T_B_F.p.y(), T_B_F.p.z()) );
-        tf::Quaternion q;
-        double qx, qy, qz, qw;
-        T_B_F.M.GetQuaternion(q[0], q[1], q[2], q[3]);
-        transform.setRotation(q);
-        br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "base", frame_id));
-    }
-
-    int publishRobotModelVis(int m_id, const boost::shared_ptr<self_collision::CollisionModel> &col_model, const std::vector<KDL::Frame > &T) {
-        for (self_collision::CollisionModel::VecPtrLink::const_iterator l_it = col_model->getLinks().begin(); l_it != col_model->getLinks().end(); l_it++) {
-            KDL::Frame T_B_L = T[(*l_it)->index_];
-            for (self_collision::Link::VecPtrCollision::const_iterator it = (*l_it)->collision_array.begin(); it != (*l_it)->collision_array.end(); it++) {
-                KDL::Frame T_B_O = T_B_L * (*it)->origin;
-                if ((*it)->geometry->getType() == self_collision::Geometry::CONVEX) {
-                    // TODO
-                }
-                else if ((*it)->geometry->getType() == self_collision::Geometry::SPHERE) {
-                    self_collision::Sphere *sphere = static_cast<self_collision::Sphere* >((*it)->geometry.get());
-                    m_id = markers_pub_.addSinglePointMarker(m_id, T_B_O.p, 0, 1, 0, 0.5, sphere->radius*2, "base");
-                }
-                else if ((*it)->geometry->getType() == self_collision::Geometry::CAPSULE) {
-                    self_collision::Capsule *capsule = static_cast<self_collision::Capsule* >((*it)->geometry.get());
-                    m_id = markers_pub_.addCapsule(m_id, T_B_O, capsule->length, capsule->radius, "base");
-                }
-            }
-        }
-        return m_id;
     }
 
     void spin() {
@@ -211,7 +170,7 @@ public:
             if (loop_counter > 500) {
                 r_HAND_target = KDL::Frame(KDL::Rotation::RotZ(randomUniform(-PI, PI)), KDL::Vector(randomUniform(0,2), randomUniform(-1,1), 0));
 
-                publishTransform(r_HAND_target, "effector_dest");
+                publishTransform(br, r_HAND_target, "effector_dest");
                 loop_counter = 0;
             }
             loop_counter += 1;
@@ -310,9 +269,9 @@ public:
             // publish markers and robot state with limited rate
             ros::Duration time_elapsed = ros::Time::now() - last_time;
             if (time_elapsed.toSec() > 0.05) {
-                publishJointState(q, joint_names);
+                publishJointState(joint_state_pub_, q, joint_names);
                 int m_id = 0;
-                m_id = publishRobotModelVis(m_id, col_model, links_fk);
+                m_id = addRobotModelVis(markers_pub_, m_id, col_model, links_fk);
                 markers_pub_.publish();
                 ros::Time last_time = ros::Time::now();
             }
