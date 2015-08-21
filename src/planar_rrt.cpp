@@ -340,10 +340,6 @@ public:
             r_HAND_start = T_B_E;
             diff_target = KDL::diff(r_HAND_start, r_HAND_target, 1.0);
 
-//            // calculate forward kinematics for all links
-//            for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
-//                kin_model->calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), q);
-//            }
             bool pose_reached  = false;
 
             for (int path_idx = 0; path_idx < 10; path_idx++) {
@@ -352,10 +348,11 @@ public:
                 std::list<Eigen::VectorXd > path;
                 if (!pg.getPath(path)) {
                     std::cout << "could not plan end effector path" << std::endl;
-                    getchar();
                     continue;
                 }
                 target_path = path;
+                double sim_loops_per_meter = 2000.0;
+                int sim_loops = static_cast<int>( getPathLength(path) * sim_loops_per_meter );
 
                 // visualize the planned graph
                 int m_id = 100;
@@ -385,9 +382,9 @@ public:
 
                     sim.setState(saved_q, saved_dq, saved_ddq);
 
-                    for (int loop_counter = 0; loop_counter < 3000; loop_counter++) {
+                    for (int loop_counter = 0; loop_counter < sim_loops; loop_counter++) {
                         Eigen::VectorXd pt(2);
-                        double f_path = static_cast<double >(loop_counter)/2200.0;
+                        double f_path = static_cast<double >(loop_counter)/(sim_loops*2/3);
                         if (f_path > 1.0) {
                             f_path = 1.0;
                         }
