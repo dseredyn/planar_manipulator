@@ -219,7 +219,7 @@ public:
             stateOmplToEigen(goal.get(), xe, ndof);
             KDL::Frame T_B_E;
             kin_model->calculateFk(T_B_E, col_model->getLinkName(effector_idx), xe);
-            publishTransform(br, T_B_E, "effector_dest");
+            publishTransform(br, T_B_E, "effector_dest", "base");
 
             ompl::base::ProblemDefinitionPtr pdef(new ompl::base::ProblemDefinition(si));
             pdef->clearStartStates();

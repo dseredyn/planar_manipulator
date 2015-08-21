@@ -170,7 +170,7 @@ public:
             if (loop_counter > 500) {
                 r_HAND_target = KDL::Frame(KDL::Rotation::RotZ(randomUniform(-PI, PI)), KDL::Vector(randomUniform(0,2), randomUniform(-1,1), 0));
 
-                publishTransform(br, r_HAND_target, "effector_dest");
+                publishTransform(br, r_HAND_target, "effector_dest", "base");
                 loop_counter = 0;
             }
             loop_counter += 1;

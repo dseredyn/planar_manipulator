@@ -48,9 +48,6 @@
 #include "kin_model/kin_model.h"
 #include "planer_utils/marker_publisher.h"
 #include "planer_utils/utilities.h"
-#include "planer_utils/task_col.h"
-#include "planer_utils/task_hand.h"
-#include "planer_utils/task_jlc.h"
 #include "planer_utils/random_uniform.h"
 #include "planer_utils/reachability_map.h"
 #include "rrt_star.h"
@@ -275,14 +272,6 @@ public:
 
         ros::Duration(1.0).sleep();
 
-        //
-        // Tasks declaration
-        //
-        Task_JLC task_JLC(lower_limit, upper_limit, limit_range, max_trq);
-        double activation_dist = 0.05;
-        Task_COL task_COL(ndof, activation_dist, 10.0, kin_model, col_model);
-        Task_HAND task_HAND(ndof, 3);
-
         Eigen::VectorXd lower_bound(2);
         Eigen::VectorXd upper_bound(2);
         lower_bound(0) = -0.5;
@@ -298,9 +287,7 @@ public:
         // loop variables
         ros::Time last_time = ros::Time::now();
         KDL::Frame r_HAND_target;
-        int loop_counter = 10000;
         ros::Rate loop_rate(500);
-        int try_idx = 50;
         std::list<Eigen::VectorXd > target_path;
 
         KDL::Twist diff_target;
@@ -324,7 +311,7 @@ public:
                 std::cout << "ERROR: could not find valid pose" << std::endl;
                 return;
             }
-            publishTransform(br, r_HAND_target, "effector_dest");
+            publishTransform(br, r_HAND_target, "effector_dest", "base");
 
             // get the current pose
             sim.getState(saved_q, saved_dq, saved_ddq);

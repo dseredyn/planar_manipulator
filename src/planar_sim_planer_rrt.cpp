@@ -364,7 +364,7 @@ public:
                         std::cout << "ERROR: could not find valid pose" << std::endl;
                         return;
                     }
-                    publishTransform(br, r_HAND_target, "effector_dest");
+                    publishTransform(br, r_HAND_target, "effector_dest", "base");
 
                     r_map->resetPenalty();
                     realized_path.clear();
