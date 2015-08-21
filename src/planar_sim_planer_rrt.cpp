@@ -53,7 +53,7 @@
 #include "planer_utils/task_jlc.h"
 #include "planer_utils/random_uniform.h"
 #include "planer_utils/reachability_map.h"
-#include "rrt_star.h"
+#include "planer_utils/rrt_star.h"
 
 class TestDynamicModel {
     ros::NodeHandle nh_;

@@ -50,8 +50,8 @@
 #include "planer_utils/utilities.h"
 #include "planer_utils/random_uniform.h"
 #include "planer_utils/reachability_map.h"
-#include "rrt_star.h"
-#include "simulator.h"
+#include "planer_utils/rrt_star.h"
+#include "planer_utils/simulator.h"
 
 class PathsGenerator {
 protected:
@@ -281,7 +281,7 @@ public:
 
         PathsGenerator pg(2, lower_bound, upper_bound, col_model);
 
-        DynamicsSimulatorHandPose sim(ndof, effector_name, col_model, kin_model, dyn_model, joint_names);
+        DynamicsSimulatorHandPose sim(ndof, 3, effector_name, col_model, kin_model, dyn_model, joint_names);
         sim.setState(saved_q, saved_dq, saved_ddq);
 
         // loop variables
