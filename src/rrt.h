@@ -41,7 +41,8 @@
 class RRTState {
 public:
     KDL::Frame T_B_E_;
-    std::vector<std::pair<int, Eigen::VectorXd > > q_vec_;
+    Eigen::VectorXd q_;
+//    std::vector<std::pair<int, Eigen::VectorXd > > q_vec_;
 };
 
 class RRT {
@@ -65,7 +66,7 @@ public:
 
     void steer(const KDL::Frame &x_from, const KDL::Frame &x_to, double steer_dist_lin, double steer_dist_rot, KDL::Frame &x) const;
 
-    bool collisionFree(const Eigen::VectorXd &q_from, const KDL::Frame &x_from, const KDL::Frame &x_to, int try_idx, Eigen::VectorXd &q_to) const;
+    bool collisionFree(const Eigen::VectorXd &q_from, const KDL::Frame &x_from, const KDL::Frame &x_to, int try_idx, Eigen::VectorXd &q_to, KDL::Frame &x_to_out) const;
 
     double costLine(const KDL::Frame &x1, const KDL::Frame &x2) const;
 
