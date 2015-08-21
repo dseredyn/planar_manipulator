@@ -318,9 +318,6 @@ public:
                 boost::bind(&TestDynamicModel::sampleSpace, this, _1, lower_bound, upper_bound),
                 0.05, 0.5, 0.8, kin_model, effector_name, sim);
 
-        PathsGenerator pg(2, lower_bound, upper_bound, col_model);
-
-
         // loop variables
         ros::Time last_time = ros::Time::now();
         KDL::Frame r_HAND_target;
@@ -332,11 +329,7 @@ public:
 
         while (ros::ok()) {
 
-            Eigen::VectorXd xe(2);
-
             generatePossiblePose(r_HAND_target, ndof, effector_name, col_model, kin_model);
-            xe(0) = r_HAND_target.p.x();
-            xe(1) = r_HAND_target.p.y();
 
             publishTransform(br, r_HAND_target, "effector_dest", "base");
 
