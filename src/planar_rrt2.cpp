@@ -287,10 +287,6 @@ public:
         //
         boost::shared_ptr<KinematicModel> kin_model( new KinematicModel(robot_description_str, joint_names) );
 
-        KinematicModel::Jacobian J_r_HAND_6, J_r_HAND;
-        J_r_HAND_6.resize(6, ndof);
-        J_r_HAND.resize(3, ndof);
-
         std::vector<KDL::Frame > links_fk(col_model->getLinksCount());
 
         // joint limits
