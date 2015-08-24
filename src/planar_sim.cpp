@@ -50,6 +50,7 @@
 #include "planer_utils/task_col.h"
 #include "planer_utils/task_hand.h"
 #include "planer_utils/task_jlc.h"
+#include "planer_utils/task_wcc.h"
 #include "planer_utils/random_uniform.h"
 
 class TestDynamicModel {
@@ -148,6 +149,8 @@ public:
                 ROS_ERROR("ERROR: could not find joint with name %s", name_it->c_str() );
                 return;
             }
+//            lower_limit[q_idx] = -1;
+//            upper_limit[q_idx] = 1;
             limit_range[q_idx] = 10.0/180.0*PI;
             max_trq[q_idx] = 10.0;
         }
@@ -156,10 +159,39 @@ public:
         // Tasks declaration
         //
         Task_JLC task_JLC(lower_limit, upper_limit, limit_range, max_trq);
+        Task_WCC task_WCC(ndof, 3, 4);
         double activation_dist = 0.05;
         Task_COL task_COL(ndof, activation_dist, 10.0, kin_model, col_model);
         Task_HAND task_HAND(ndof, 3);
+/*
+        while (ros::ok()) {
 
+            //
+            // wrist collision constraint
+            //
+            Eigen::VectorXd torque_WCC(ndof);
+            Eigen::MatrixXd N_WCC(ndof, ndof);
+            task_WCC.compute(q, dq, dyn_model->getM(), dyn_model->getInvM(), torque_WCC, N_WCC, markers_pub_);
+            markers_pub_.publish();
+            ros::spinOnce();
+
+            char ch = getchar();
+            if (ch == 'a') {
+                q(3) -= 0.1;
+            }
+            else if (ch == 'd') {
+                q(3) += 0.1;
+            }
+            else if (ch == 's') {
+                q(4) -= 0.1;
+            }
+            else if (ch == 'w') {
+                q(4) += 0.1;
+            }
+        }
+
+        return;
+*/
         // loop variables
         ros::Time last_time = ros::Time::now();
         KDL::Frame r_HAND_target;
@@ -188,6 +220,14 @@ public:
             Eigen::VectorXd torque_JLC(ndof);
             Eigen::MatrixXd N_JLC(ndof, ndof);
             task_JLC.compute(q, dq, dyn_model->getM(), torque_JLC, N_JLC);
+
+            //
+            // wrist collision constraint
+            //
+            Eigen::VectorXd torque_WCC(ndof);
+            Eigen::MatrixXd N_WCC(ndof, ndof);
+            task_WCC.compute(q, dq, dyn_model->getM(), dyn_model->getInvM(), torque_WCC, N_WCC, markers_pub_);
+            std::cout << torque_WCC.transpose() << std::endl;
 
             //
             // collision constraints
@@ -254,7 +294,9 @@ public:
 
             task_HAND.compute(r_HAND_diff, Kc, Dxi, J_r_HAND, dq, dyn_model->getInvM(), torque_HAND, N_HAND);
 
-            torque = torque_JLC + N_JLC.transpose() * (torque_COL + (N_COL.transpose() * (torque_HAND)));// + N_HAND.transpose() * torque_COL2)));
+//            torque = torque_JLC + N_JLC.transpose() * (torque_COL + (N_COL.transpose() * (torque_HAND)));
+            torque = torque_JLC + N_JLC.transpose() * (torque_WCC + (N_WCC.transpose() * (torque_HAND)));
+//            torque = torque_JLC + N_JLC.transpose() * torque_HAND;
 
 
             // simulate one step
