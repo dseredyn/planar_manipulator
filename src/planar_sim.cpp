@@ -226,7 +226,7 @@ public:
             //
             Eigen::VectorXd torque_WCC(ndof);
             Eigen::MatrixXd N_WCC(ndof, ndof);
-            task_WCC.compute(q, dq, dyn_model->getM(), dyn_model->getInvM(), torque_WCC, N_WCC, markers_pub_);
+            task_WCC.compute(q, dq, dyn_model->getM(), dyn_model->getInvM(), torque_WCC, N_WCC, &markers_pub_);
             std::cout << torque_WCC.transpose() << std::endl;
 
             //
