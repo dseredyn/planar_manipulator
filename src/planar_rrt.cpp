@@ -261,11 +261,8 @@ public:
         Eigen::VectorXd lower_limit(ndof), upper_limit(ndof), limit_range(ndof), max_trq(ndof);
         int q_idx = 0;
         for (std::vector<std::string >::const_iterator name_it = joint_names.begin(); name_it != joint_names.end(); name_it++, q_idx++) {
-
-            if (!col_model->getJointLimits( (*name_it), lower_limit[q_idx], upper_limit[q_idx] )) {
-                ROS_ERROR("ERROR: could not find joint with name %s", name_it->c_str() );
-                return;
-            }
+            lower_limit[q_idx] = kin_model->getLowerLimit(q_idx);
+            upper_limit[q_idx] = kin_model->getUpperLimit(q_idx);
             limit_range[q_idx] = 10.0/180.0*PI;
             max_trq[q_idx] = 10.0;
         }

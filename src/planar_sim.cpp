@@ -52,6 +52,7 @@
 #include "planer_utils/task_jlc.h"
 #include "planer_utils/task_wcc.h"
 #include "planer_utils/random_uniform.h"
+#include "planer_utils/simulator.h"
 
 class TestDynamicModel {
     ros::NodeHandle nh_;
@@ -71,6 +72,25 @@ public:
     }
 
     ~TestDynamicModel() {
+    }
+
+    void generatePossiblePose(KDL::Frame &T_B_E, Eigen::VectorXd &q, int ndof, const std::string &effector_name, const boost::shared_ptr<self_collision::CollisionModel> &col_model, const boost::shared_ptr<KinematicModel> &kin_model) {
+        while (true) {
+            for (int q_idx = 0; q_idx < ndof; q_idx++) {
+                q(q_idx) = randomUniform(kin_model->getLowerLimit(q_idx), kin_model->getUpperLimit(q_idx));
+            }
+            std::set<int> excluded_link_idx;
+            std::vector<KDL::Frame > links_fk(col_model->getLinksCount());
+            // calculate forward kinematics for all links
+            for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
+                kin_model->calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), q);
+            }
+
+            if (!self_collision::checkCollision(col_model, links_fk, excluded_link_idx)) {
+                T_B_E = links_fk[col_model->getLinkIndex(effector_name)];
+                break;
+            }
+        }
     }
 
     void spin() {
@@ -144,17 +164,21 @@ public:
         Eigen::VectorXd lower_limit(ndof), upper_limit(ndof), limit_range(ndof), max_trq(ndof);
         int q_idx = 0;
         for (std::vector<std::string >::const_iterator name_it = joint_names.begin(); name_it != joint_names.end(); name_it++, q_idx++) {
-
-            if (!col_model->getJointLimits( (*name_it), lower_limit[q_idx], upper_limit[q_idx] )) {
-                ROS_ERROR("ERROR: could not find joint with name %s", name_it->c_str() );
-                return;
-            }
-//            lower_limit[q_idx] = -1;
-//            upper_limit[q_idx] = 1;
+            lower_limit[q_idx] = kin_model->getLowerLimit(q_idx);
+            upper_limit[q_idx] = kin_model->getUpperLimit(q_idx);
             limit_range[q_idx] = 10.0/180.0*PI;
             max_trq[q_idx] = 10.0;
         }
 
+        Eigen::VectorXd max_q(ndof);
+        max_q(0) = 10.0/180.0*PI;
+        max_q(1) = 20.0/180.0*PI;
+        max_q(2) = 20.0/180.0*PI;
+        max_q(3) = 30.0/180.0*PI;
+        max_q(4) = 40.0/180.0*PI;
+
+        boost::shared_ptr<DynamicsSimulatorHandPose> sim( new DynamicsSimulatorHandPose(ndof, 6, effector_name, col_model, kin_model, dyn_model, joint_names, max_q) );
+/*
         //
         // Tasks declaration
         //
@@ -163,6 +187,8 @@ public:
         double activation_dist = 0.05;
         Task_COL task_COL(ndof, activation_dist, 10.0, kin_model, col_model);
         Task_HAND task_HAND(ndof, 3);
+*/
+
 /*
         while (ros::ok()) {
 
@@ -197,120 +223,50 @@ public:
         KDL::Frame r_HAND_target;
         int loop_counter = 10000;
         ros::Rate loop_rate(100);
+
+        while (true) {
+            generatePossiblePose(r_HAND_target, q, ndof, effector_name, col_model, kin_model);
+            sim->setState(q, dq, ddq);
+            sim->setTarget(r_HAND_target);
+            sim->oneStep();
+            if (!sim->inCollision()) {
+                break;
+            }
+        }
+
         while (ros::ok()) {
 
             if (loop_counter > 500) {
-                r_HAND_target = KDL::Frame(KDL::Rotation::RotZ(randomUniform(-PI, PI)), KDL::Vector(randomUniform(0,2), randomUniform(-1,1), 0));
+                Eigen::VectorXd q_tmp(ndof);
+                generatePossiblePose(r_HAND_target, q_tmp, ndof, effector_name, col_model, kin_model);
+
+                sim->setTarget(r_HAND_target);
 
                 publishTransform(br, r_HAND_target, "effector_dest", "base");
                 loop_counter = 0;
             }
             loop_counter += 1;
 
-            // calculate forward kinematics for all links
-            for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
-                kin_model->calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), q);
+            sim->oneStep(&markers_pub_, 3000);
+/*            if (sim->inCollision() && !collision_in_prev_step) {
+                collision_in_prev_step = true;
+                std::cout << "collision begin" << std::endl;
             }
-            dyn_model->computeM(q);
-
-
-            //
-            // joint limit avoidance
-            //
-            Eigen::VectorXd torque_JLC(ndof);
-            Eigen::MatrixXd N_JLC(ndof, ndof);
-            task_JLC.compute(q, dq, dyn_model->getM(), torque_JLC, N_JLC);
-
-            //
-            // wrist collision constraint
-            //
-            Eigen::VectorXd torque_WCC(ndof);
-            Eigen::MatrixXd N_WCC(ndof, ndof);
-            task_WCC.compute(q, dq, dyn_model->getM(), dyn_model->getInvM(), torque_WCC, N_WCC, &markers_pub_);
-            std::cout << torque_WCC.transpose() << std::endl;
-
-            //
-            // collision constraints
-            //
-            std::vector<self_collision::CollisionInfo> link_collisions;
-            self_collision::getCollisionPairs(col_model, links_fk, activation_dist, link_collisions);
-
-            {
-                    int m_id = 1000;
-                    for (std::vector<self_collision::CollisionInfo>::const_iterator it = link_collisions.begin(); it != link_collisions.end(); it++) {
-                        m_id = markers_pub_.addVectorMarker(m_id, it->p1_B, it->p2_B, 1, 1, 1, 1, 0.01, "world");
-                        m_id = markers_pub_.addVectorMarker(m_id, it->p1_B, it->p1_B - 0.03 * it->n1_B, 1, 1, 1, 1, 0.01, "world");
-                        m_id = markers_pub_.addVectorMarker(m_id, it->p2_B, it->p2_B - 0.03 * it->n2_B, 1, 1, 1, 1, 0.01, "world");
-                    }
-                    markers_pub_.addEraseMarkers(m_id, m_id+100);
-
+            else if (!sim->inCollision() && collision_in_prev_step) {
+                collision_in_prev_step = false;
+                std::cout << "collision end" << std::endl;
             }
-
-
-            Eigen::VectorXd torque_COL(ndof);
-            for (int q_idx = 0; q_idx < ndof; q_idx++) {
-                torque_COL[q_idx] = 0.0;
-            }
-            Eigen::MatrixXd N_COL(Eigen::MatrixXd::Identity(ndof, ndof));
-
-            task_COL.compute(q, dq, dyn_model->getInvM(), links_fk, link_collisions, torque_COL, N_COL);
-
-            //
-            // effector task
-            //
-            Eigen::VectorXd torque_HAND(ndof);
-            Eigen::MatrixXd N_HAND(ndof, ndof);
-
-            KDL::Frame T_B_E = links_fk[effector_idx];
-            KDL::Frame r_HAND_current = T_B_E;
-
-            KDL::Twist diff = KDL::diff(r_HAND_current, r_HAND_target, 1.0);
-            Eigen::VectorXd r_HAND_diff(3);
-            r_HAND_diff[0] = diff[0];
-            r_HAND_diff[1] = diff[1];
-            r_HAND_diff[2] = diff[5];
-
-            KDL::Twist diff_goal = KDL::diff(r_HAND_current, r_HAND_target, 1.0);
-
-            if (diff_goal.vel.Norm() < 0.06 && diff.rot.Norm() < 5.0/180.0 * PI) {
-            }
-
-            Eigen::VectorXd Kc(3);
-            Kc[0] = 10.0;
-            Kc[1] = 10.0;
-            Kc[2] = 1.00;
-            Eigen::VectorXd Dxi(3);
-            Dxi[0] = 0.7;
-            Dxi[1] = 0.7;
-            Dxi[2] = 0.7;
-
-            kin_model->getJacobian(J_r_HAND_6, effector_name, q);
-
-            for (int q_idx = 0; q_idx < ndof; q_idx++) {
-                J_r_HAND(0, q_idx) = J_r_HAND_6(0, q_idx);
-                J_r_HAND(1, q_idx) = J_r_HAND_6(1, q_idx);
-                J_r_HAND(2, q_idx) = J_r_HAND_6(5, q_idx);
-            }
-
-            task_HAND.compute(r_HAND_diff, Kc, Dxi, J_r_HAND, dq, dyn_model->getInvM(), torque_HAND, N_HAND);
-
-//            torque = torque_JLC + N_JLC.transpose() * (torque_COL + (N_COL.transpose() * (torque_HAND)));
-            torque = torque_JLC + N_JLC.transpose() * (torque_WCC + (N_WCC.transpose() * (torque_HAND)));
-//            torque = torque_JLC + N_JLC.transpose() * torque_HAND;
-
-
-            // simulate one step
-            Eigen::VectorXd prev_ddq(ddq), prev_dq(dq);
-            dyn_model->accel(ddq, q, dq, torque);
-            float time_d = 0.01;
-            for (int q_idx = 0; q_idx < ndof; q_idx++) {
-                dq[q_idx] += (prev_ddq[q_idx] + ddq[q_idx]) / 2.0 * time_d;
-                q[q_idx] += (prev_dq[q_idx] + dq[q_idx]) / 2.0 * time_d;
-            }
+*/
+            sim->getState(q, dq, ddq);
 
             // publish markers and robot state with limited rate
             ros::Duration time_elapsed = ros::Time::now() - last_time;
             if (time_elapsed.toSec() > 0.05) {
+                // calculate forward kinematics for all links
+                for (int l_idx = 0; l_idx < col_model->getLinksCount(); l_idx++) {
+                    kin_model->calculateFk(links_fk[l_idx], col_model->getLinkName(l_idx), q);
+                }
+
                 publishJointState(joint_state_pub_, q, joint_names);
                 int m_id = 0;
                 m_id = addRobotModelVis(markers_pub_, m_id, col_model, links_fk);
